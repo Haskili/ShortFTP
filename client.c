@@ -13,49 +13,49 @@
 int verifyPassword(int s, fd_set readfds, const char * password, char * buf) {//Send password in argv[3] to server and act on reponse from server
 	send(s, password, 15, 0);//Send password to server
 
-    /* Setup for receiving the response from server */
+    //Setup for receiving the response from server
     FD_SET(s, &readfds);//Add s to list of sockets
     memset(buf, 0, MAX_LINE);
     recv(s, buf, MAX_LINE, 0);
 
-    /* Ask if the server verified our password */
+    //Ask if the server verified our password
     if(strcmp(buf, "y") == 0) {
     	return 0;
     }
 
-    /* Server didn't give good response to password we sent, alert client */
+    //Server didn't give good response to password we sent, alert client
     printf("CLIENT: Error verifying password with server, terminating.\n");
 	return 1;
 }
 
-int lookup_and_connect( const char *host, const char *service ) {
+int lookup_and_connect(const char *host, const char *service) {
 	struct addrinfo hints;
 	struct addrinfo *rp, *result;
 	int s;
 
-	/* Translate host name into peer's IP address */
+	//Translate host name into peer's IP address
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = 0;
 	hints.ai_protocol = 0;
 
-	if ((s = getaddrinfo( host, service, &hints, &result)) != 0) {
+	if((s = getaddrinfo( host, service, &hints, &result)) != 0) {
 		fprintf( stderr, "stream-talk-client: getaddrinfo: %s\n", gai_strerror(s));
 		return -1;
 	}
 
-	/* Iterate through the address list and try to connect */
-	for (rp = result; rp != NULL; rp = rp->ai_next) {
-		if ((s = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol)) == -1) {
+	//Iterate through the address list and try to connect
+	for(rp = result; rp != NULL; rp = rp->ai_next) {
+		if((s = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol)) == -1) {
 			continue;
 		}
-		if (connect(s, rp->ai_addr, rp->ai_addrlen) != -1) {
+		if(connect(s, rp->ai_addr, rp->ai_addrlen) != -1) {
 			break;
 		}
 		close(s);
 	}
-	if (rp == NULL) {
+	if(rp == NULL) {
 		perror("stream-talk-client: connect");
 		return -1;
 	}

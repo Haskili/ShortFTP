@@ -66,7 +66,7 @@ int bind_and_listen(const char *service) {
 	}
 
 	if (rp == NULL) {
-		perror("stream-talk-server: bind" );
+		perror("stream-talk-server: bind");
 		return -1;
 	}
 	if (listen(s, MAX_PENDING) == -1) {
