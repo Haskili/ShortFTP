@@ -14,7 +14,7 @@
 #define MAX_PENDING 5
 #define MAX_SIZE 30
 
-int createList() {//Creates a file to store list of files in directory server is started, itself included
+int createList() {//Creates a file to store list of files in directory server is started, itself not included
 	struct dirent* DirEntry;
 	DIR* directory;
 	directory = opendir(".");
@@ -37,7 +37,47 @@ int createList() {//Creates a file to store list of files in directory server is
 	return 0;
 }
 
-int bind_and_listen(const char *service);
+int bind_and_listen(const char *service) {
+	struct addrinfo hints;
+	struct addrinfo *rp, *result;
+	int s;
+
+	//Build address data structure
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = AI_PASSIVE;
+	hints.ai_protocol = 0;
+
+	//Get local address info
+	if ((s = getaddrinfo(NULL, service, &hints, &result))!= 0) {
+		fprintf( stderr, "stream-talk-server: getaddrinfo: %s\n", gai_strerror(s));
+		return -1;
+	}
+	//Iterate through the address list and try to perform passive open
+	for (rp = result; rp != NULL; rp = rp->ai_next) {
+		if ((s = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol)) == -1) {
+			continue;
+		}
+		if (!bind(s, rp->ai_addr, rp->ai_addrlen)) {
+			break;
+		}
+		close(s);
+	}
+
+	if (rp == NULL) {
+		perror("stream-talk-server: bind" );
+		return -1;
+	}
+	if (listen(s, MAX_PENDING) == -1) {
+		perror("stream-talk-server: listen");
+		close(s);
+		return -1;
+	}
+
+	freeaddrinfo(result);
+	return s;
+}
 
 int main(int argc, char *argv[]) {
 	char buf[MAX_LINE];
@@ -80,14 +120,14 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	/* Bind socket to local interface and passive open */
-	if ((s = bind_and_listen(SERVER_PORT)) < 0) {
+	//Bind socket to local interface and passive open
+	if((s = bind_and_listen(SERVER_PORT)) < 0) {
 		exit(1);
 	}
 
-	/* Wait for connection, then receive and print text */
+	//Wait for connection
 	while (1) {
-	    //Try to accept a client
+	    //Try to accept a client new_s on s
 		if((new_s = accept(s, (struct sockaddr *)&clientAddr, &clientAddrSize)) < 0) {
 			perror("stream-talk-server: accept");
 			close(s);
@@ -116,13 +156,6 @@ int main(int argc, char *argv[]) {
 				exit(1);
 			}
 			printf("SERVER: Good password from client\n");
-			
-			int listFile = open("DirectoryList", O_RDWR);
-			if(listFile < 0) {//Verify we can open the file that contains our list of files in directory
-				printf("SERVER: Error opening list file. Terminating.\n");
-				send(new_s, "Unable to open file.", 20, 0);//Alert client to error
-				exit(1);
-			}
 
 			//Alert client of good password and client will accept or deny the list (it could be massive depending on directory)
 			printf("SERVER: Asking client to accept list\n");
@@ -135,7 +168,6 @@ int main(int argc, char *argv[]) {
 			//If the client didn't want the list
 			if(strcmp(buf, "n") == 0) {
 				printf("SERVER: The client denied the file, exiting.\n");
-				close (listFile);
 				close(new_s);
 				close(s);
 				return 0;
@@ -148,6 +180,14 @@ int main(int argc, char *argv[]) {
 				exit(1);
 		    }
 
+		    //Attempt to open newly create file with list
+		    int listFile = open("DirectoryList", O_RDWR);
+			if(listFile < 0) {//Verify we can open the file that contains our list of files in directory
+				printf("SERVER: Error opening list file. Terminating.\n");
+				send(new_s, "Unable to open file.", 20, 0);//Alert client to error
+				exit(1);
+			}
+
 		    //Send list file to the client
 			printf("SERVER: The client accepted the list, sending...\n");
 			if(debugMode == 1) {printf("SERVER: - Start list -\n\n");}
@@ -158,6 +198,7 @@ int main(int argc, char *argv[]) {
 			}
 			if(debugMode == 1) {printf("\nSERVER: - End list -\n");}
 			close (listFile);
+			remove("DirectoryList");
 
 			//Receive the client response of a filename within 30 seconds or time out
 			int timeoutVal = 0;
@@ -247,6 +288,7 @@ int main(int argc, char *argv[]) {
 			}
 			if(debugMode == 1) {printf("\n\nSERVER: - End file -\n");}
 			printf("SERVER: Finished sending file to client. %i total bytes sent.\n", bytes);
+			close(requestedFile);
 
 			//We get the md5 of our file and save it for the next step
 			printf("SERVER: Grabbing the md5sum for our file\n\n");
@@ -285,52 +327,9 @@ int main(int argc, char *argv[]) {
 					}
 				}
 			}
-			remove("DirectoryList");
 			close(new_s);
 			close(s);
 			return 0;//End of transfer process
 		}
 	}
-}
-
-int bind_and_listen(const char *service) {
-	struct addrinfo hints;
-	struct addrinfo *rp, *result;
-	int s;
-
-	/* Build address data structure */
-	memset(&hints, 0, sizeof(struct addrinfo));
-	hints.ai_family = AF_INET;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = AI_PASSIVE;
-	hints.ai_protocol = 0;
-
-	/* Get local address info */
-	if ((s = getaddrinfo(NULL, service, &hints, &result))!= 0) {
-		fprintf( stderr, "stream-talk-server: getaddrinfo: %s\n", gai_strerror(s));
-		return -1;
-	}
-	/* Iterate through the address list and try to perform passive open */
-	for (rp = result; rp != NULL; rp = rp->ai_next ) {
-		if ((s = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol)) == -1) {
-			continue;
-		}
-		if (!bind(s, rp->ai_addr, rp->ai_addrlen)) {
-			break;
-		}
-		close(s);
-	}
-
-	if (rp == NULL) {
-		perror("stream-talk-server: bind" );
-		return -1;
-	}
-	if (listen(s, MAX_PENDING) == -1) {
-		perror("stream-talk-server: listen");
-		close(s);
-		return -1;
-	}
-
-	freeaddrinfo(result);
-	return s;
 }

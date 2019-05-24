@@ -10,8 +10,6 @@
 #define MAX_LINE 256
 #define MAX_SIZE 30
 
-int lookup_and_connect(const char *host, const char *service);
-
 int verifyPassword(int s, fd_set readfds, const char * password, char * buf) {//Send password in argv[3] to server and act on reponse from server
 	send(s, password, 15, 0);//Send password to server
 
@@ -28,6 +26,41 @@ int verifyPassword(int s, fd_set readfds, const char * password, char * buf) {//
     /* Server didn't give good response to password we sent, alert client */
     printf("CLIENT: Error verifying password with server, terminating.\n");
 	return 1;
+}
+
+int lookup_and_connect( const char *host, const char *service ) {
+	struct addrinfo hints;
+	struct addrinfo *rp, *result;
+	int s;
+
+	/* Translate host name into peer's IP address */
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = 0;
+	hints.ai_protocol = 0;
+
+	if ((s = getaddrinfo( host, service, &hints, &result)) != 0) {
+		fprintf( stderr, "stream-talk-client: getaddrinfo: %s\n", gai_strerror(s));
+		return -1;
+	}
+
+	/* Iterate through the address list and try to connect */
+	for (rp = result; rp != NULL; rp = rp->ai_next) {
+		if ((s = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol)) == -1) {
+			continue;
+		}
+		if (connect(s, rp->ai_addr, rp->ai_addrlen) != -1) {
+			break;
+		}
+		close(s);
+	}
+	if (rp == NULL) {
+		perror("stream-talk-client: connect");
+		return -1;
+	}
+	freeaddrinfo(result);
+	return s;
 }
 
 int main( int argc, char *argv[] ) {
@@ -160,7 +193,8 @@ int main( int argc, char *argv[] ) {
 	}
 	if(debugMode == 1) {printf("\n\nCLIENT: - End file -\n");}
 	printf("CLIENT: Finished receiving file from server, %i bytes received.\n", bytesReceived);
-	
+	close(downloadFile);
+
 	//Get the md5 of our downloaded file
 	printf("CLIENT: Grabbing the md5sum of our downloaded file and checking with server...\n\n");
 	int clientTemp = open("clientTemp", O_CREAT | O_RDWR | O_TRUNC, 0644);
@@ -190,42 +224,6 @@ int main( int argc, char *argv[] ) {
     	close(s);
     	exit(1);
     }
-
 	close(s);
     return 0;
-}
-
-int lookup_and_connect( const char *host, const char *service ) {
-	struct addrinfo hints;
-	struct addrinfo *rp, *result;
-	int s;
-
-	/* Translate host name into peer's IP address */
-	memset(&hints, 0, sizeof(hints));
-	hints.ai_family = AF_INET;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = 0;
-	hints.ai_protocol = 0;
-
-	if ((s = getaddrinfo( host, service, &hints, &result)) != 0) {
-		fprintf( stderr, "stream-talk-client: getaddrinfo: %s\n", gai_strerror(s));
-		return -1;
-	}
-
-	/* Iterate through the address list and try to connect */
-	for (rp = result; rp != NULL; rp = rp->ai_next) {
-		if ((s = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol)) == -1) {
-			continue;
-		}
-		if (connect(s, rp->ai_addr, rp->ai_addrlen) != -1) {
-			break;
-		}
-		close(s);
-	}
-	if (rp == NULL) {
-		perror("stream-talk-client: connect");
-		return -1;
-	}
-	freeaddrinfo(result);
-	return s;
 }
