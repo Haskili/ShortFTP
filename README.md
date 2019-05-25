@@ -29,7 +29,17 @@ Options for the server are:
 Options for the client are:
 * -D for debugging, which prints more information to terminal than usual
 
-### Todo:
+
+## Example usage
+### Server
+![Server](https://imgur.com/fzdHg3Q.png)
+
+
+### Client
+![Client](https://imgur.com/39ckNfM.png)
+
+
+## Todo:
 * Implement better checks on both server.c and client.c to allow for more verbose error messages
 * Reduce/eliminate use of certain high-cost functions
 * Reformat comments in both server.c and client.c
