@@ -292,14 +292,15 @@ int main(int argc, char *argv[]) {
 
 			//We get the md5 of our file and save it for the next step
 			printf("SERVER: Grabbing the md5sum for our file\n\n");
-			int serverTemp = open("serverTemp", O_CREAT | O_RDWR | O_TRUNC, 0644);
-			system(md5Command);
-			read(serverTemp, serverMD5, MAX_SIZE);
+			int serverTemp = open("serverTemp", O_CREAT | O_RDWR | O_TRUNC, 0644);//Create a temporary file
+			system(md5Command);//Execute the md5sum on our file with output appended to our temporary file
+			read(serverTemp, serverMD5, 32);//Read the result from the file in our string
+			serverMD5[32] = '\0';
 			close(serverTemp);
 			remove("serverTemp");
 
-			printf("\nSERVER: Waiting for the client's md5sum to check against\n");
 			//Now we receive the md5 the client got to check against it as a check
+			printf("\nSERVER: Waiting for the client's md5sum to check against\n");
 			while(1) {
 				FD_ZERO(&readfds);
 				FD_SET(new_s, &readfds);
@@ -313,13 +314,14 @@ int main(int argc, char *argv[]) {
 
 					//Check if our file md5 is the same as client's
 					if(strcmp(buf, serverMD5) == 0) {
+						printf("Server: %s\n Client: %s \n", serverMD5, buf);
 						memset(buf, 0, MAX_LINE);
 						send(new_s, "y", 1, 0);
 						printf("SERVER: The client's md5 matched. Sending good response message and terminating.\n");
 						break;
 					}
 					else {
-						printf("SERVER: The client's md5 '%s' didn't match. Sending error message and terminating.\n", buf);
+						printf("SERVER: The client's md5 '%s' didn't match our '%s'. Sending error message and terminating.\n", buf, serverMD5);
 						send(new_s, "n", 1, 0);
 						close(new_s);
 						close(s);

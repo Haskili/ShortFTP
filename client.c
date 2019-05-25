@@ -10,11 +10,10 @@
 #define MAX_LINE 256
 #define MAX_SIZE 30
 
-int verifyPassword(int s, fd_set readfds, const char * password, char * buf) {//Send password in argv[3] to server and act on reponse from server
-	send(s, password, 15, 0);//Send password to server
+int verifyPassword(int s, const char * password, char * buf) {//Send a given password through a given sockfd
+	send(s, password, 15, 0);//Send the password to server
 
     //Setup for receiving the response from server
-    FD_SET(s, &readfds);//Add s to list of sockets
     memset(buf, 0, MAX_LINE);
     recv(s, buf, MAX_LINE, 0);
 
@@ -98,13 +97,14 @@ int main( int argc, char *argv[] ) {
 		}
 	}
 
-	/* Lookup IP and connect to server */
+	//Lookup IP and connect to server
 	if ((s = lookup_and_connect(host, SERVER_PORT)) < 0) {
 		exit(1);
 	}
+	FD_SET(s, &readfds);//Add s to list of sockets
 
 	/* Receive a verification from server that we gave a valid password */
-    if(verifyPassword(s, readfds, password, buf) != 0) {
+    if(verifyPassword(s, password, buf) != 0) {
     	close(s);
     	exit(1);
     }
@@ -197,9 +197,10 @@ int main( int argc, char *argv[] ) {
 
 	//Get the md5 of our downloaded file
 	printf("CLIENT: Grabbing the md5sum of our downloaded file and checking with server...\n\n");
-	int clientTemp = open("clientTemp", O_CREAT | O_RDWR | O_TRUNC, 0644);
-	system(md5Command);
-	read(clientTemp, clientMD5, MAX_SIZE);
+	int clientTemp = open("clientTemp", O_CREAT | O_RDWR | O_TRUNC, 0644);//Create a temporary file to hold our md5 result
+	system(md5Command);//Get the md5 for our downloaded file and store it in the temporary file
+	read(clientTemp, clientMD5, 32);//Read the md5 from the file into our string
+	clientMD5[32] = '\0';
 	close(clientTemp);
 	remove("clientTemp");
 
@@ -212,7 +213,7 @@ int main( int argc, char *argv[] ) {
 
 	//Check the status message and report it to the client before finally ending process
 	if(strcmp(buf, "y") == 0) {
-    	printf("\nCLIENT: Valid response from server. End of process.\n");
+    	printf("\nCLIENT: Good response from server, our file is valid. End of process.\n");
     }
     else if(strcmp(buf, "n") == 0) {
     	printf("\nCLIENT: Error response from server. Terminating.\n");
