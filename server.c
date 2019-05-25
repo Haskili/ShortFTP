@@ -314,7 +314,6 @@ int main(int argc, char *argv[]) {
 
 					//Check if our file md5 is the same as client's
 					if(strcmp(buf, serverMD5) == 0) {
-						printf("Server: %s\n Client: %s \n", serverMD5, buf);
 						memset(buf, 0, MAX_LINE);
 						send(new_s, "y", 1, 0);
 						printf("SERVER: The client's md5 matched. Sending good response message and terminating.\n");
