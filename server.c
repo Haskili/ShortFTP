@@ -37,7 +37,7 @@ int createList() {//Creates a file to store list of files in directory server is
 	return 0;
 }
 
-int bind_and_listen(const char *service) {
+int bind_and_listen(const char *service) {//Look at a particular port given and listen on that port for a client
 	struct addrinfo hints;
 	struct addrinfo *rp, *result;
 	int s;
@@ -50,37 +50,38 @@ int bind_and_listen(const char *service) {
 	hints.ai_protocol = 0;
 
 	//Get local address info
-	if ((s = getaddrinfo(NULL, service, &hints, &result))!= 0) {
+	if((s = getaddrinfo(NULL, service, &hints, &result))!= 0) {//Use getaddrinfo() to give us a linked list of addresses
 		fprintf( stderr, "stream-talk-server: getaddrinfo: %s\n", gai_strerror(s));
 		return -1;
 	}
-	//Iterate through the address list and try to perform passive open
-	for (rp = result; rp != NULL; rp = rp->ai_next) {
-		if ((s = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol)) == -1) {
+
+	//Iterate through the address list and try to perform passive open on each one
+	for(rp = result; rp != NULL; rp = rp->ai_next) {
+		if((s = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol)) == -1) {
 			continue;
 		}
-		if (!bind(s, rp->ai_addr, rp->ai_addrlen)) {
+		if(!bind(s, rp->ai_addr, rp->ai_addrlen)) {
 			break;
 		}
 		close(s);
 	}
 
-	if (rp == NULL) {
+	if(rp == NULL) {
 		perror("stream-talk-server: bind");
 		return -1;
 	}
-	if (listen(s, MAX_PENDING) == -1) {
+	if(listen(s, MAX_PENDING) == -1) {
 		perror("stream-talk-server: listen");
 		close(s);
 		return -1;
 	}
 
 	freeaddrinfo(result);
-	return s;
+	return s;//Return a value, which will be used to determine if an error occured (s < 0 on = to function call)
 }
 
 int main(int argc, char *argv[]) {
-	char buf[MAX_LINE];
+	char buf[MAX_LINE];//Buffer used throughout the entire process to receive and send to client
 	int s, new_s, size, len;
 	const char * SERVER_PORT = argv[1];
 	const char * SERVER_PASSWORD = argv[2];
@@ -90,30 +91,22 @@ int main(int argc, char *argv[]) {
     struct sockaddr_in clientAddr;//Holds our client address
 	socklen_t clientAddrSize = sizeof(struct sockaddr_in);
 	char md5Command[MAX_LINE];//String that we will use for our system() call
+	char serverMD5[MAX_LINE];//String to hold result of the server MD5 on the original file asked for
 	strcpy(md5Command, "md5sum ");//Prep the system() call string
-	char serverMD5[MAX_LINE];
 
-    if(!argv[1] || !argv[2]) {
-    	printf("SERVER ERROR: Incorrect arguments,\nUSAGE: PORT#, PASSWORD\n");
+    if(!argv[1] || !argv[2]) {//Check that port and password are given by user
+    	printf("SERVER ERROR: Incorrect arguments,\nUSAGE: PORT#, PASSWORD, -[OPTIONS]\n");
     	exit(1);
     }
 
-	//Get all the options if user selected any - Might want to put ints inside of if() and instead ask for each mode operation is argc != 3 so it won't give error
-	int debugMode = 0;
-	int noPassMode = 0;
-	int noTimeOutMode = 0;
+	//Get all the options asked for, if any - Makes sure options can be selected in any order
+	int debugMode, noPassMode, noTimeOutMode = 0;
 	if(argc != 3) {
 		for(int i = 3; i < argc; i++) {
-			if(strcmp(argv[i], "-D") == 0) {
-				debugMode = 1;
-			}
-			else if(strcmp(argv[i], "-NP") == 0) {
-				noPassMode = 1;
-			}
-			else if(strcmp(argv[i], "-NT") == 0) {
-				noTimeOutMode = 1;
-			}
-			else {
+			if(strcmp(argv[i], "-D") == 0) {debugMode = 1;}//Debug mode for more verbose printing during process
+			else if(strcmp(argv[i], "-NP") == 0) {noPassMode = 1;}//No password mode to allow any password to be accepted
+			else if(strcmp(argv[i], "-NT") == 0) {noTimeOutMode = 1;}//No timeout mode to allow infinite time for client to choose file on receipt of list
+			else {//Alert client to invalid option and continue
 				printf("SERVER: Invalid option '%s'\n", argv[i]);
 				printf("SERVER: The valid options are '-D' for debugging mode, '-NP' for no password mode, and '-NT' for no timeout in requesting file\nSERVER: Continuing with process\n");
 			}
@@ -159,7 +152,7 @@ int main(int argc, char *argv[]) {
 
 			//Alert client of good password and client will accept or deny the list (it could be massive depending on directory)
 			printf("SERVER: Asking client to accept list\n");
-			send(new_s, "y", 1, 0);//Alert client that the password was accepted
+			send(new_s, "y", 1, 0);//Alert the client that the password was accepted
 
 			//Receive the response of the client on whether they want the list
             memset(buf, 0, MAX_LINE);
@@ -194,7 +187,7 @@ int main(int argc, char *argv[]) {
 			while((size = read(listFile, buf, MAX_SIZE)) != 0) {
 				buf[MAX_LINE - 1] = '\0';
 				send(new_s, buf, size, 0);//Send data to client
-				if(debugMode == 1) {write(1, buf, size);}//Write the file as we read() it into stdout
+				if(debugMode == 1) {write(1, buf, size);}//Write the file as we read() it into stdout if debug on
 			}
 			if(debugMode == 1) {printf("\nSERVER: - End list -\n");}
 			close (listFile);
@@ -296,6 +289,8 @@ int main(int argc, char *argv[]) {
 			system(md5Command);//Execute the md5sum on our file with output appended to our temporary file
 			read(serverTemp, serverMD5, 32);//Read the result from the file in our string
 			serverMD5[32] = '\0';
+			
+			//Close the temporary file and delete it now that we are done with the MD5 creation
 			close(serverTemp);
 			remove("serverTemp");
 

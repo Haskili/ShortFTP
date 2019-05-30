@@ -71,13 +71,13 @@ int main( int argc, char *argv[] ) {
 	char * password = argv[3];
 	struct timeval tv;
     fd_set readfds;//Create a fileset for file descriptors
-    FD_ZERO(&readfds);//Clear fileset
+    FD_ZERO(&readfds);//Clear the fileset
     char md5Command[MAX_LINE];//String that we will use for our system() call
 	strcpy(md5Command, "md5sum Downloaded_File | tee -a clientTemp");//Prepare the system() call string
-	char clientMD5[MAX_LINE];
+	char clientMD5[MAX_LINE];//String to hold result of client's MD5 on the downloaded files
 
     if(!argv[1] || !argv[2] || !argv[3]) {
-       printf("CLIENT ERROR: Incorrect arguments,\nUSAGE: HOST-ADR, PORT#, PASS\n");
+       printf("CLIENT ERROR: Incorrect arguments,\nUSAGE: HOST-ADR, PORT#, PASS, -[OPTIONS]\n");
        exit(1);
     }
 
@@ -85,15 +85,9 @@ int main( int argc, char *argv[] ) {
 	int debugMode = 0;
 	if(argc != 3) {
 		for(int i = 4; i < argc; i++) {
-			if(strcmp(argv[i], "-D") == 0) {
-				debugMode = 1;
-			}
-			else if(strcmp(argv[i], "-MODE") == 0) {
-				//set the int
-			}
-			else {
-				printf("CLIENT: Invalid option '%s', \nthe valid options are '-D' for debugging mode, '-MODE' for MODE, and 'XX'.\nCLIENT: Continuing with process.\n", argv[i]);
-			}
+			if(strcmp(argv[i], "-D") == 0) {debugMode = 1;}
+			else if(strcmp(argv[i], "-EXAMPLE_MODE") == 0) {/* Set the int value to 1 to designate it as 'on' */}//Example of usage for finding options
+			else {printf("CLIENT: Invalid option '%s', \nthe valid options are '-D' for debugging mode, '-MODE' for MODE, and 'XX'.\nCLIENT: Continuing with process.\n", argv[i]);}
 		}
 	}
 
@@ -132,7 +126,7 @@ int main( int argc, char *argv[] ) {
 		}
 	}
 
-	/* Print the list of files received with clear indicators of start/stop */
+	//Print the list of files received with clear indicators of start/stop 
 	printf("CLIENT: - Start list -\n\n");
 	while((len = recv(s, buf, MAX_LINE, 0))) {
 		write(1, buf, len);
@@ -179,7 +173,7 @@ int main( int argc, char *argv[] ) {
 		if(debugMode == 1) {write(1, buf, len);}//Write file to terminal in debug mode as we recv() it
 		bytesReceived += len; 
 		memset(buf, 0, MAX_LINE);
-
+		
 		//Clear the fdset and reset the timevals
 		FD_ZERO(&readfds);
 		FD_SET(s, &readfds);
@@ -200,7 +194,9 @@ int main( int argc, char *argv[] ) {
 	int clientTemp = open("clientTemp", O_CREAT | O_RDWR | O_TRUNC, 0644);//Create a temporary file to hold our md5 result
 	system(md5Command);//Get the md5 for our downloaded file and store it in the temporary file
 	read(clientTemp, clientMD5, 32);//Read the md5 from the file into our string
-	clientMD5[32] = '\0';
+	clientMD5[32] = '\0';//Correct the string to only include the MD5 result, not the end part that includes the file name function was called on
+	
+	//Close the temporary file and delete it now that we are done with the MD5 creation
 	close(clientTemp);
 	remove("clientTemp");
 
@@ -213,7 +209,7 @@ int main( int argc, char *argv[] ) {
 
 	//Check the status message and report it to the client before finally ending process
 	if(strcmp(buf, "y") == 0) {
-    	printf("\nCLIENT: Good response from server, our file is valid. End of process.\n");
+    	printf("\nCLIENT: Good response from server, confirmed that our file is valid. End of process.\n");
     }
     else if(strcmp(buf, "n") == 0) {
     	printf("\nCLIENT: Error response from server. Terminating.\n");

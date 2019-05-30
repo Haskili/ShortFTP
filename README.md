@@ -40,7 +40,12 @@ Options for the client are:
 
 
 ## Todo:
+* Change the password verification process to tell the client the timeout settings
+* Allow user to specify a timeout value rather than the default of 30 or no timeout at all
+* Include multiple file transfer functionality
+* Reduce/eliminate certain redundant checks that slow down process for larger file size tranfers
 * Implement better checks on both server.c and client.c to allow for more verbose error messages
 * Reduce/eliminate use of certain high-cost functions
-* Reformat comments in both server.c and client.c
 * Reduce/clean function usage in server.c
+* Re-comment some of the items in the client.c and server.c such as lookup_and_connect()
+* Write a function called wait_for_response() for both client.c and server.c that returns 1 if the socket designated didn't get anything within time allocated
