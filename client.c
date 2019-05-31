@@ -62,6 +62,23 @@ int lookup_and_connect(const char *host, const char *service) {
 	return s;
 }
 
+int isReceiving(int s, fd_set fds) {//Wait a preset time period for activity on the designated fd
+	//Clear the fdset
+	FD_ZERO(&fds);
+	FD_SET(s, &fds);
+
+	//Reset the timevalues used for select() wait time
+	struct timeval tv;
+	tv.tv_sec = 0;
+	tv.tv_usec = 500000;
+	
+	//Return 1 if we see activity
+	if((select(s+1, &fds, NULL, NULL, &tv)) > 0) {
+		return 1;
+	}
+	return 0;//Otherwise, we return 0 (false) if we don't get anything within time period
+}
+
 int main( int argc, char *argv[] ) {
 	char *host;
 	char buf[MAX_LINE];
@@ -69,7 +86,6 @@ int main( int argc, char *argv[] ) {
 	host = argv[1];
 	const char * SERVER_PORT = argv[2];
 	char * password = argv[3];
-	struct timeval tv;
     fd_set readfds;//Create a fileset for file descriptors
     FD_ZERO(&readfds);//Clear the fileset
     char md5Command[MAX_LINE];//String that we will use for our system() call
@@ -109,21 +125,19 @@ int main( int argc, char *argv[] ) {
 		memset(buf, 0, MAX_LINE);
 		fgets(buf, MAX_LINE, stdin);
 		buf[1] = '\0';//Correction for new line on fgets getting filename
-		if(strcmp(buf, "y") == 0) {
+		if(strcmp(buf, "y") == 0 || strcmp(buf, "Y") == 0) {
 			send(s, buf, strlen(buf), 0);//Tell server to send the list
 			memset(buf, 0, MAX_LINE);//Reset buffer
 			break;
 		}
-		else if (strcmp(buf, "n") == 0) {
+		else if (strcmp(buf, "n") == 0 || strcmp(buf, "N") == 0) {
 			send(s, buf, strlen(buf), 0);//Tell the server to not send the list
 			memset(buf, 0, MAX_LINE);
 			close(s);
 			printf("CLIENT: Told server not to send list, terminating\n");
 			return 0;
 		}
-		else {
-			printf("Invalid input: '%s', please type 'y' for yes, or 'n' for no\n", buf);
-		}
+		else {printf("CLIENT: Invalid input: '%s', please type 'y' for yes, or 'n' for no\n", buf);}//User is alerted to invalid input and we will continue until valid input
 	}
 
 	//Print the list of files received with clear indicators of start/stop 
@@ -131,17 +145,7 @@ int main( int argc, char *argv[] ) {
 	while((len = recv(s, buf, MAX_LINE, 0))) {
 		write(1, buf, len);
 		memset(buf, 0, MAX_LINE);
-		
-		//Clear the fdset and reset the timevals
-		FD_ZERO(&readfds);
-		FD_SET(s, &readfds);
-		tv.tv_sec = 0;
-		tv.tv_usec = 500000;
-		
-		//Break out of receiving loop if we're not receiving data from the server anymore
-		if((select(s+1, &readfds, NULL, NULL, &tv)) <= 0) {
-			break;
-		}
+		if(isReceiving(s, readfds) == 0) {break;}//If we're not receiving anymore information, break out of the loop and continue
 	}
 	printf("\nCLIENT: - End list -\n");
 
@@ -164,26 +168,16 @@ int main( int argc, char *argv[] ) {
 	}
 
 	//Since we got a good response, we are going to receive the file data
-	if(debugMode == 1) {printf("CLIENT: Valid response from server, writing file and printing contents to terminal\nCLIENT: - Receiving file -\n\n");}
-	else {printf("CLIENT: Valid response from server, writing file\n");}
-	int downloadFile = open("Downloaded_File", O_CREAT | O_WRONLY | O_TRUNC, 0644);
+	if(debugMode == 1) {printf("CLIENT: Valid response from server to our file request, writing file and printing contents to terminal\nCLIENT: - Receiving file -\n\n");}
+	else {printf("CLIENT: Valid response from server to our file request, writing file.\n");}
+	int downloadFile = open("Downloaded_File", O_CREAT | O_WRONLY | O_TRUNC, 0644);//Open file we're going to write our information into
 	int bytesReceived = 0;
 	while((len = recv(s, buf, MAX_LINE, 0))) {
 		write(downloadFile, buf, len);
 		if(debugMode == 1) {write(1, buf, len);}//Write file to terminal in debug mode as we recv() it
 		bytesReceived += len; 
 		memset(buf, 0, MAX_LINE);
-		
-		//Clear the fdset and reset the timevals
-		FD_ZERO(&readfds);
-		FD_SET(s, &readfds);
-		tv.tv_sec = 0;
-		tv.tv_usec = 500000;
-
-		//Break out of receiving loop if we're not receiving data from the server anymore
-		if((select(s+1, &readfds, NULL, NULL, &tv)) <= 0) {
-			break;
-		}
+		if(isReceiving(s, readfds) == 0) {break;}//If we're not receiving anymore information, break out of the loop and continue
 	}
 	if(debugMode == 1) {printf("\n\nCLIENT: - End file -\n");}
 	printf("CLIENT: Finished receiving file from server, %i bytes received.\n", bytesReceived);
