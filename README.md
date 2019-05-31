@@ -1,16 +1,16 @@
 # ShortFTP
 
 ## Overview
-ShortFTP is a basic FTP that allows the client to look through a given list of files in the directory server is executed in, choose a file from that list, and verify the validity of that file using an md5sum. It is made mainly for learning purposes.
+ShortFTP is a basic FTP server/client that allows the client to look through a given list of files in the directory server is executed in, choose a file from that list, and verify the validity of that file using an md5sum. It is made mainly for learning purposes.
 
 
-I started this project outside of school while in my first networking class only a few months ago when I was introduced to networking with C. At first, I was introduced to how two hosts communicate and thought it was exciting to see how FTP actually worked. I designed this based off a project that was assigned which allowed for bare-bones file transfering (you had to know what file to ask for as a client beforehand) between two hosts. Once I was done with that project, I started this one on my own, eager to see what I could do if I took the concept a little bit further. The result is ShortFTP, which allows file-transfer using passwords, MD5 checks, and other various features. 
+I started this project outside of school while in my first networking class only a few months ago when I was introduced to networking with C. At first, I was introduced to how two hosts communicate and thought it was exciting to see how that interaction worked. I designed this based off a project that was assigned in class which allowed for bare-bones (as in you actually had to know what file to ask for beforehand as the client and everything) file transfering between two hosts. Once I was done with that project, I started this one on my own, eager to see what I could do if I explored the concept a little bit further. The result is ShortFTP, which allows file-transfer between server/client using passwords, MD5 checks, and various other features. 
 
 
-While by no means is it complete, I believe it may serve as a decent learning tool for networking using C.
+While by no means is it complete, I believe it may serve as a decent learning tool for networking using C if nothing else.
 
 
-*The lookup_and_connect() in client.c as well as the bind_and_listen() in server.c are modified from a small sample code given in "Computer Networks: A Systems Approach", 5th Edition by Larry L. Peterson and Bruce S. Davis. The rest is original work but it is nessecery to give credit where it is due.*
+*The lookup_and_connect() in client.c as well as the bind_and_listen() in server.c are modified from a small sample code given in "Computer Networks: A Systems Approach", 5th Edition by Larry L. Peterson and Bruce S. Davis. The rest is original work but it is necesarry to give credit where it is due.*
 
 
 ## Functionality
