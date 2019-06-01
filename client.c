@@ -89,8 +89,8 @@ int main( int argc, char *argv[] ) {
     fd_set readfds;//Create a fileset for file descriptors
     FD_ZERO(&readfds);//Clear the fileset
     char md5Command[MAX_LINE];//String that we will use for our system() call
-	strcpy(md5Command, "md5sum Downloaded_File | tee -a clientTemp");//Prepare the system() call string
 	char clientMD5[MAX_LINE];//String to hold result of client's MD5 on the downloaded files
+	char downloadFileStr[MAX_LINE];//String to hold the name of the file that we will create to write downloaded information into
 
     if(!argv[1] || !argv[2] || !argv[3]) {
        printf("CLIENT ERROR: Incorrect arguments,\nUSAGE: HOST-ADR, PORT#, PASS, -[OPTIONS]\n");
@@ -149,72 +149,116 @@ int main( int argc, char *argv[] ) {
 	}
 	printf("\nCLIENT: - End list -\n");
 
-	//Get the filename choice and send it back to the server
-	printf("CLIENT: Please choose a file from the list above.\n");
-	memset(buf, 0, MAX_LINE);
-	fgets(buf, MAX_LINE, stdin);//Retrieve input
-	buf[strlen(buf) - 1] = '\0';//Correction for newline on fgets
-	send(s, buf, MAX_LINE, 0);//Send filename
-
-	//Get the server's response to our request 
-	memset(buf, 0, MAX_LINE);
-	recv(s, buf, 1, 0);
-
-	//If we got an bad or an invalid response from server
-	if(strcmp(buf, "y") != 0) {
-		printf("CLIENT: We received an invalid or bad response from the server for our request of file. Terminating.\n");
-		close(s);
-		exit(1);
-	}
-
-	//Since we got a good response, we are going to receive the file data
-	if(debugMode == 1) {printf("CLIENT: Valid response from server to our file request, writing file and printing contents to terminal\nCLIENT: - Receiving file -\n\n");}
-	else {printf("CLIENT: Valid response from server to our file request, writing file.\n");}
-	int downloadFile = open("Downloaded_File", O_CREAT | O_WRONLY | O_TRUNC, 0644);//Open file we're going to write our information into
-	int bytesReceived = 0;
-	while((len = recv(s, buf, MAX_LINE, 0))) {
-		write(downloadFile, buf, len);
-		if(debugMode == 1) {write(1, buf, len);}//Write file to terminal in debug mode as we recv() it
-		bytesReceived += len; 
+	//Get the filename choice(s) and send the list back to the server
+	printf("CLIENT: Please choose a file(s) from the list above and finish by entering a ';;' or an empty line.\n");
+	char fileList[MAX_LINE];
+	fileList[0] = '0';
+	for(int i = 1; i < 10; i++) {
 		memset(buf, 0, MAX_LINE);
-		if(isReceiving(s, readfds) == 0) {break;}//If we're not receiving anymore information, break out of the loop and continue
+		fgets(buf, MAX_LINE, stdin);
+		buf[strlen(buf) - 1] = '\0';//Correction for new line on fgets getting input
+		if(strcmp(buf, ";;") == 0 || strcmp(buf, "") == 0) {
+			memset(buf, 0, MAX_LINE);//Reset buffer
+			break;
+		}
+
+		//Append the list with the new file and the preliminary separator
+		strcat(fileList, ";;");
+		strcat(fileList, buf);
+
+		//Copy list of files into buf temporarily
+		strcpy(buf, fileList + 1);//Copy only the file list of fileList into buf
+
+		//Set the files requested counter in string
+		sprintf(fileList, "%i", i);
+
+		//Put the list being held by buf back into the fileList string and print it
+		strcat(fileList, buf);
 	}
-	if(debugMode == 1) {printf("\n\nCLIENT: - End file -\n");}
-	printf("CLIENT: Finished receiving file from server, %i bytes received.\n", bytesReceived);
-	close(downloadFile);
+	printf("CLIENT: We requested '%i' files.\n", atoi(fileList));
+	send(s, fileList, MAX_LINE, 0);//Send filename list
 
-	//Get the md5 of our downloaded file
-	printf("CLIENT: Grabbing the md5sum of our downloaded file and checking with server...\n\n");
-	int clientTemp = open("clientTemp", O_CREAT | O_RDWR | O_TRUNC, 0644);//Create a temporary file to hold our md5 result
-	system(md5Command);//Get the md5 for our downloaded file and store it in the temporary file
-	read(clientTemp, clientMD5, 32);//Read the md5 from the file into our string
-	clientMD5[32] = '\0';//Correct the string to only include the MD5 result, not the end part that includes the file name function was called on
-	
-	//Close the temporary file and delete it now that we are done with the MD5 creation
-	close(clientTemp);
-	remove("clientTemp");
+	//Setup the structures for file names for the next part
+	char *ptr = strtok(fileList, ";;");
+	char curFile[MAX_LINE];
+	ptr = strtok(NULL, ";;");
 
-	//Send our resulting md5 to the server and wait for it's response
-	send(s, clientMD5, MAX_LINE, 0);
+	//Receive each file from server by going into a loop an amount of times equal to # of files we requested
+	int rqstAmnt = atoi(fileList);
+	for(int i = 0; i < rqstAmnt; i++) {
+		//Grab the current file that we should be receiving from the fileList
+		strcpy(curFile, ptr);
+		curFile[strlen(ptr)] = '\0';
 
-	//Receive the status of the md5 check from the server
-	memset(buf, 0, MAX_LINE);
-	recv(s, buf, 1, 0);
+		//Get the server's response to our request 
+		memset(buf, 0, MAX_LINE);
+		recv(s, buf, 1, 0);
 
-	//Check the status message and report it to the client before finally ending process
-	if(strcmp(buf, "y") == 0) {
-    	printf("\nCLIENT: Good response from server, confirmed that our file is valid. End of process.\n");
-    }
-    else if(strcmp(buf, "n") == 0) {
-    	printf("\nCLIENT: Error response from server. Terminating.\n");
-    	close(s);
-    	exit(1);
-    }
-    else {
-    	printf("\nInvalid respopnse from server '%s'. Terminating.\n", buf);
-    	close(s);
-    	exit(1);
-    }
+		//If we got an bad or an invalid response from server
+		if(strcmp(buf, "y") != 0) {
+			printf("CLIENT: We received an invalid or bad response from the server for our request of file '%s'. Terminating.\n", curFile);
+			close(s);
+			exit(1);
+		}
+
+		//Begin to recv() the file from server after opening our own local copy to write the data into
+		if(debugMode == 1) {printf("CLIENT: Valid response from server to request for file '%s', writing file and printing contents...\nCLIENT: - Receiving file -\n\n", curFile);}
+		else {printf("CLIENT: Valid response from server to request for file '%s', writing file.\n", curFile);}
+		strcpy(downloadFileStr, "DF-");
+		strcat(downloadFileStr, curFile);
+		int downloadFile = open(downloadFileStr, O_CREAT | O_WRONLY | O_TRUNC, 0644);//Open file we're going to write our information into
+		int bytesReceived = 0;
+		while((len = recv(s, buf, MAX_LINE, 0))) {
+			write(downloadFile, buf, len);
+			if(debugMode == 1) {write(1, buf, len);}//Write file to terminal in debug mode as we recv() it
+			bytesReceived += len; 
+			memset(buf, 0, MAX_LINE);
+			if(isReceiving(s, readfds) == 0) {break;}//If we're not receiving anymore information, break out of the loop and continue
+		}
+		if(debugMode == 1) {printf("\n\nCLIENT: - End file -\n");}
+		printf("CLIENT: Finished receiving file from server, %i bytes received.\n", bytesReceived);
+		close(downloadFile);
+
+		//Prepare the string for the MD5 command
+		strcpy(md5Command, "md5sum DF-");
+		strcat(md5Command, curFile);
+		strcat(md5Command, " | tee -a clientTemp");
+
+		//Get the md5 of our downloaded file
+		printf("CLIENT: Grabbing the md5sum of our downloaded file and checking with server\n\n");
+		int clientTemp = open("clientTemp", O_CREAT | O_RDWR | O_TRUNC, 0644);//Create a temporary file to hold our md5 result
+		system(md5Command);//Get the md5 for our downloaded file and store it in the temporary file
+		read(clientTemp, clientMD5, 32);//Read the md5 from the file into our string
+		clientMD5[32] = '\0';//Correct the string to only include the MD5 result, not the end part that includes the file name function was called on
+		
+		//Close the temporary file and delete it now that we are done with the MD5 creation
+		close(clientTemp);
+		remove("clientTemp");
+
+		//Send our resulting md5 to the server and wait for it's response
+		send(s, clientMD5, MAX_LINE, 0);
+
+		//Receive the status of the md5 check from the server
+		memset(buf, 0, MAX_LINE);
+		recv(s, buf, 1, 0);
+
+		//Check the status message and report it to the client before finally ending process
+		if(strcmp(buf, "y") == 0) {
+	    	printf("\nCLIENT: Good response from server, confirmed that our file is valid. Moving on...\n\n");
+	    }
+	    else if(strcmp(buf, "n") == 0) {
+	    	printf("\nCLIENT: Error response from server. Terminating.\n");
+	    	close(s);
+	    	exit(1);
+	    }
+	    else {
+	    	printf("\nCLIENT: Invalid response from server '%s'. Terminating.\n", buf);
+	    	close(s);
+	    	exit(1);
+	    }
+	    ptr = strtok(NULL, ";;");
+	}
+	printf("CLIENT: Final file transfered, end of process.\n");
 	close(s);
     return 0;
 }

@@ -242,97 +242,115 @@ int main(int argc, char *argv[]) {
 				exit(1);
 			}
 
-			//Try to open the requested file
-			int requestedFile = open(buf, O_RDWR);
+			//Setup structures for list of file names we just received from client
+			if(atoi(buf) == 0) {/* EXIT HERE ON NO FILES REQUESTED */}
+			char curList[MAX_LINE], curFile[MAX_LINE];
+			strcpy(curList, buf);
 
-			//If we failed to open the requested file, send a bad response "n" to client
-			if(requestedFile < 0) {
-				printf("SERVER: Error opening requested file. Terminating.\n");
-				send(new_s, "n", 1, 0);//Alert client to error
-				close(new_s);
-				close(s);
-				exit(1);
-			}
-
-			//Now we can make the string for the system() call
-			char md5Command[MAX_LINE];//String that we will use for our system() call
-			char serverMD5[MAX_LINE];//String to hold result of the server MD5 on the original file asked for
-			strcpy(md5Command, "md5sum ");//Prep the system() call string
-			strcat(md5Command, buf);//Get the filename requested and put it into the command string
-			strcat(md5Command, " | tee -a serverTemp");
-
-			//Check against all files in folder and see if the requested file matches one of them as a final security check
-			struct dirent* DirEntry;
-			DIR* directory;
-			directory = opendir(".");
-			int gotFile = 0;
-			while((DirEntry = readdir(directory))) {
-				if(strcmp(DirEntry->d_name, buf) == 0) {//If the name of the pointer to our current file in directory is file requested
-					gotFile = 1;
-					break;
-				}
-			}
-			closedir(directory);
-
-			//If we didn't find the file requested withing our current directory, alert client and terminate connection
-			if(gotFile != 1) {
-				printf("SERVER: Error finding requested file '%s'. Terminating.\n", buf);
-				send(new_s, "n", 1, 0);//Alert client to error
-				close(new_s);
-				close(s);
-				exit(1);
-			}
-
-			//We see the requested file is in our PWD and can open it, return a good response "y" to client and send the data afterwards
-			printf("SERVER: Sending file to client\n");
-			send(new_s, "y", 1, 0);
-			if(debugMode == 1) {printf("\nSERVER: - Start file -\n\n");}
-			int bytes = 0;
-			while((size = read(requestedFile, buf, MAX_SIZE)) != 0) {
-				buf[MAX_LINE - 1] = '\0';
-				send(new_s, buf, size, 0);
-				bytes += size;//Increment bytes by size of packet sent each time
-				if(debugMode == 1) {write(1, buf, size);}//Print contents of buf to stdout each run of read
-			}
-			if(debugMode == 1) {printf("\n\nSERVER: - End file -\n");}
-			printf("SERVER: Finished sending file to client. %i total bytes sent.\n", bytes);
-			close(requestedFile);
-
-			//We get the md5 of our file and save it for the next step
-			printf("SERVER: Grabbing the md5sum for our file\n\n");
-			int serverTemp = open("serverTemp", O_CREAT | O_RDWR | O_TRUNC, 0644);//Create a temporary file
-			system(md5Command);//Execute the md5sum on our file with output appended to our temporary file
-			read(serverTemp, serverMD5, 32);//Read the result from the file in our string
-			serverMD5[32] = '\0';
+			//Create a ptr for tokens of filenames
+			char *ptr = strtok(curList, ";;");
+			ptr = strtok(NULL, ";;");
 			
-			//Close the temporary file and delete it now that we are done with the MD5 creation
-			close(serverTemp);
-			remove("serverTemp");
+			//Check each file name in our list and go through the sending process while there are ";;" in curList
+			while(ptr != NULL) {
+				//Set the curFile equal to the file in the list we're current at as defined by ptr
+				strcpy(curFile, ptr);
+				curFile[strlen(ptr)] = '\0';
+				printf("SERVER: Our current file name is '%s'\n", curFile);
 
-			//Now we receive the md5 the client got to check against it as a check
-			printf("\nSERVER: Waiting for the client's md5sum to check against\n");
-			while(1) {
-				if(isReceiving(new_s, readfds, 0, 500000) == 1) {//If we're receiving data from client on new_s
-					memset(buf, 0, MAX_LINE);
-					recv(new_s, buf, MAX_LINE, 0);
+				//Try to open the requested file
+				int requestedFile = open(curFile, O_RDWR);
 
-					//Check if our file md5 is the same as client's
-					if(strcmp(buf, serverMD5) == 0) {
-						memset(buf, 0, MAX_LINE);
-						send(new_s, "y", 1, 0);
-						printf("SERVER: The client's md5 matched. Sending good response message and terminating connection with client.\n");
+				//If we failed to open the requested file, send a bad response "n" to client
+				if(requestedFile < 0) {
+					printf("SERVER: Error opening requested file. Terminating.\n");
+					send(new_s, "n", 1, 0);//Alert client to error
+					close(new_s);
+					close(s);
+					exit(1);
+				}
+
+				//Now we can make the string for the system() call
+				char md5Command[MAX_LINE];//String that we will use for our system() call
+				char serverMD5[MAX_LINE];//String to hold result of the server MD5 on the original file asked for
+				strcpy(md5Command, "md5sum ");//Prep the system() call string
+				strcat(md5Command, curFile);//Get the filename requested and put it into the command string
+				strcat(md5Command, " | tee -a serverTemp");
+
+				//Check against all files in folder and see if the requested file matches one of them as a final security check
+				struct dirent* DirEntry;
+				DIR* directory;
+				directory = opendir(".");
+				int gotFile = 0;
+				while((DirEntry = readdir(directory))) {
+					if(strcmp(DirEntry->d_name, curFile) == 0) {//If the name of the pointer to our current file in directory is file requested
+						gotFile = 1;
 						break;
 					}
-					else {
-						printf("SERVER: The client's md5 '%s' didn't match our '%s'. Sending error message and terminating.\n", buf, serverMD5);
-						send(new_s, "n", 1, 0);
-						close(new_s);
-						close(s);
-						exit(1);
+				}
+				closedir(directory);
+
+				//If we didn't find the file requested withing our current directory, alert client and terminate connection
+				if(gotFile != 1) {
+					printf("SERVER: Error finding requested file '%s'. Terminating.\n", curFile);
+					send(new_s, "n", 1, 0);//Alert client to error
+					close(new_s);
+					close(s);
+					exit(1);
+				}
+
+				//We see the requested file is in our PWD and can open it, return a good response "y" to client and send the data afterwards
+				printf("SERVER: Sending file to client\n");
+				send(new_s, "y", 1, 0);
+				if(debugMode == 1) {printf("\nSERVER: - Start file -\n\n");}
+				int bytes = 0;
+				while((size = read(requestedFile, buf, MAX_SIZE)) != 0) {
+					buf[MAX_LINE - 1] = '\0';
+					send(new_s, buf, size, 0);
+					bytes += size;//Increment bytes by size of packet sent each time
+					if(debugMode == 1) {write(1, buf, size);}//Print contents of buf to stdout each run of read
+				}
+				if(debugMode == 1) {printf("\n\nSERVER: - End file -\n");}
+				printf("SERVER: Finished sending file to client. %i total bytes sent.\n", bytes);
+				close(requestedFile);
+
+				//We get the md5 of our file and save it for the next step
+				printf("SERVER: Grabbing the md5sum for our file\n\n");
+				int serverTemp = open("serverTemp", O_CREAT | O_RDWR | O_TRUNC, 0644);//Create a temporary file
+				system(md5Command);//Execute the md5sum on our file with output appended to our temporary file
+				read(serverTemp, serverMD5, 32);//Read the result from the file in our string
+				serverMD5[32] = '\0';
+				
+				//Close the temporary file and delete it now that we are done with the MD5 creation
+				close(serverTemp);
+				remove("serverTemp");
+
+				//Now we receive the md5 the client got to check against it as a check
+				printf("\nSERVER: Waiting for the client's md5sum to check against\n");
+				while(1) {
+					if(isReceiving(new_s, readfds, 0, 500000) == 1) {//If we're receiving data from client on new_s
+						memset(buf, 0, MAX_LINE);
+						recv(new_s, buf, MAX_LINE, 0);
+
+						//Check if our file md5 is the same as client's
+						if(strcmp(buf, serverMD5) == 0) {
+							memset(buf, 0, MAX_LINE);
+							send(new_s, "y", 1, 0);
+							printf("SERVER: The client's md5 matched. Sending good response message.\n\n");
+							break;
+						}
+						else {
+							printf("SERVER: The client's md5 '%s' didn't match our '%s'. Sending error message and terminating.\n\n", buf, serverMD5);
+							send(new_s, "n", 1, 0);
+							close(new_s);
+							close(s);
+							exit(1);
+						}
 					}
 				}
+				ptr = strtok(NULL, ";;");//Increment the ptr to go to the next token (filename) in curList
 			}
-
+		
 			//Ask the user if they wish to continue to receive new clients if we haven't set it to stay up after each run
 			if(stayUpMode == 0) {
 				printf("SERVER: We finished sending the file to our client, would you like to stay up for the next client?\n");
