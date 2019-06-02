@@ -19,17 +19,17 @@ int createList() {//Creates a file to store list of files in directory server is
 	DIR* directory;
 	directory = opendir(".");
 
-	//Verify we can open/create the file for our list of filenames
+	//Verify we can create the file for our list of filenames
 	int listFile = open("DirectoryList", O_CREAT | O_WRONLY | O_TRUNC, 0644);
 	if(listFile < 0) {
 		return 1;
 	}
 
 	//Read each filename in present directory and write it into listFile
-	while((DirEntry = readdir(directory))) {
-		if(strcmp(DirEntry->d_name, ".") != 0 && strcmp(DirEntry->d_name, "..") != 0) {//Check for extraneous entries
-			write(listFile, DirEntry->d_name, strlen(DirEntry->d_name));
-			write(listFile, "\n", 1);
+	while((DirEntry = readdir(directory))) {//While our pointer is being moved to the next entry in our directory
+		if(strcmp(DirEntry->d_name, ".") != 0 && strcmp(DirEntry->d_name, "..") != 0) {//Check for extraneous entries in list "." & ".."
+			write(listFile, DirEntry->d_name, strlen(DirEntry->d_name));//Write the filename to the log file
+			write(listFile, "\n", 1);//Enter a newline to prepare for the next filename
 		}
 	}
 	close (listFile);
@@ -137,7 +137,7 @@ int main(int argc, char *argv[]) {
 
 	//Wait for connection
 	while (1) {
-	    //Try to accept a client new_s on s
+	    //Try to accept a potential client on new_s
 		if((new_s = accept(s, (struct sockaddr *)&clientAddr, &clientAddrSize)) < 0) {
 			perror("stream-talk-server: accept");
 			close(s);
@@ -321,12 +321,12 @@ int main(int argc, char *argv[]) {
 				read(serverTemp, serverMD5, 32);//Read the result from the file in our string
 				serverMD5[32] = '\0';
 				
-				//Close the temporary file and delete it now that we are done with the MD5 creation
+				//Close the temporary file and delete it now that we're finished creating the MD5 for that file
 				close(serverTemp);
 				remove("serverTemp");
 
 				//Now we receive the md5 the client got to check against it as a check
-				printf("\nSERVER: Waiting for the client's md5sum to check against\n");
+				printf("\nSERVER: Waiting for the client's MD5 to check against ours\n");
 				while(1) {
 					if(isReceiving(new_s, readfds, 0, 500000) == 1) {//If we're receiving data from client on new_s
 						memset(buf, 0, MAX_LINE);
@@ -351,9 +351,9 @@ int main(int argc, char *argv[]) {
 				ptr = strtok(NULL, ";;");//Increment the ptr to go to the next token (filename) in curList
 			}
 		
-			//Ask the user if they wish to continue to receive new clients if we haven't set it to stay up after each run
+			//Ask the user if they wish to continue to receive new clients if we haven't set it to stay up after each run with -SU
 			if(stayUpMode == 0) {
-				printf("SERVER: We finished sending the file to our client, would you like to stay up for the next client?\n");
+				printf("SERVER: We finished sending the file to our client, would you like to stay up for the next client? (yes = y, no = n)\n");
 				while(1) {
 					memset(buf, 0, MAX_LINE);
 					fgets(buf, MAX_LINE, stdin);
@@ -363,11 +363,11 @@ int main(int argc, char *argv[]) {
 						break;
 					}
 					else if (strcmp(buf, "n") == 0 || strcmp(buf, "N") == 0) {
-						printf("SERVER: Ending server processes.\n");
+						printf("SERVER: User terminated. Ending processes.\n");
 						close(s);
 						return 0;
 					}
-					else {printf("SERVER: Invalid input: '%s', please type 'y' for yes, or 'n' for no\n", buf);}//User is alerted to invalid input and we will continue until valid input
+					else {printf("SERVER: Invalid input: '%s', please type 'y' for yes, or 'n' for no\n", buf);}//User is alerted to invalid input and we will continue waiting until valid input
 				}
 			}
 		}

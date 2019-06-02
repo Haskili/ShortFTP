@@ -62,7 +62,7 @@ int lookup_and_connect(const char *host, const char *service) {
 	return s;
 }
 
-int isReceiving(int s, fd_set fds) {//Wait a preset time period for activity on the designated fd
+int isReceiving(int s, fd_set fds) {//Wait a preset time period for activity on a designated fd
 	//Clear the fdset
 	FD_ZERO(&fds);
 	FD_SET(s, &fds);
@@ -113,13 +113,13 @@ int main( int argc, char *argv[] ) {
 	}
 	FD_SET(s, &readfds);//Add s to list of sockets
 
-	/* Receive a verification from server that we gave a valid password */
+	//Receive a verification from server that we gave a valid password
     if(verifyPassword(s, password, buf) != 0) {
     	close(s);
     	exit(1);
     }
 
-    /* Return response to server on whether we want to receive the list of files available */
+    //Return response to server on whether we want to receive the list of files available
 	printf("CLIENT: List available from host with address '%s'\nCLIENT: Are you certain you want to download the list from this host? (yes = y, no = n)\n", argv[1]);
 	while(1) {
 		memset(buf, 0, MAX_LINE);
@@ -150,7 +150,7 @@ int main( int argc, char *argv[] ) {
 	printf("\nCLIENT: - End list -\n");
 
 	//Get the filename choice(s) and send the list back to the server
-	printf("CLIENT: Please choose a file(s) from the list above and finish by entering a ';;' or an empty line.\n");
+	printf("CLIENT: Please choose a file(s) from the list above and finish by entering a ';;' or an empty line.\n\n");
 	char fileList[MAX_LINE];
 	fileList[0] = '0';
 	for(int i = 1; i < 10; i++) {
@@ -175,7 +175,7 @@ int main( int argc, char *argv[] ) {
 		//Put the list being held by buf back into the fileList string and print it
 		strcat(fileList, buf);
 	}
-	printf("CLIENT: We requested '%i' files.\n", atoi(fileList));
+	printf("CLIENT: We requested %i files from the server, waiting for response from server...\n", atoi(fileList));
 	send(s, fileList, MAX_LINE, 0);//Send filename list
 
 	//Setup the structures for file names for the next part
@@ -202,8 +202,8 @@ int main( int argc, char *argv[] ) {
 		}
 
 		//Begin to recv() the file from server after opening our own local copy to write the data into
-		if(debugMode == 1) {printf("CLIENT: Valid response from server to request for file '%s', writing file and printing contents...\nCLIENT: - Receiving file -\n\n", curFile);}
-		else {printf("CLIENT: Valid response from server to request for file '%s', writing file.\n", curFile);}
+		if(debugMode == 1) {printf("CLIENT: Valid response from server to request for file '%s', writing file and printing contents\nCLIENT: - Receiving file -\n\n", curFile);}
+		else {printf("CLIENT: Valid response from server to request for file '%s', writing file\n", curFile);}
 		strcpy(downloadFileStr, "DF-");
 		strcat(downloadFileStr, curFile);
 		int downloadFile = open(downloadFileStr, O_CREAT | O_WRONLY | O_TRUNC, 0644);//Open file we're going to write our information into
@@ -216,22 +216,22 @@ int main( int argc, char *argv[] ) {
 			if(isReceiving(s, readfds) == 0) {break;}//If we're not receiving anymore information, break out of the loop and continue
 		}
 		if(debugMode == 1) {printf("\n\nCLIENT: - End file -\n");}
-		printf("CLIENT: Finished receiving file from server, %i bytes received.\n", bytesReceived);
+		printf("CLIENT: Finished receiving file '%s' from server. %i bytes received\n", curFile, bytesReceived);
 		close(downloadFile);
 
 		//Prepare the string for the MD5 command
 		strcpy(md5Command, "md5sum DF-");
 		strcat(md5Command, curFile);
-		strcat(md5Command, " | tee -a clientTemp");
+		strcat(md5Command, " | tee -a clientTemp");//We use the | tee -a clientTemp to put the result of our command into that file
 
 		//Get the md5 of our downloaded file
 		printf("CLIENT: Grabbing the md5sum of our downloaded file and checking with server\n\n");
 		int clientTemp = open("clientTemp", O_CREAT | O_RDWR | O_TRUNC, 0644);//Create a temporary file to hold our md5 result
 		system(md5Command);//Get the md5 for our downloaded file and store it in the temporary file
-		read(clientTemp, clientMD5, 32);//Read the md5 from the file into our string
-		clientMD5[32] = '\0';//Correct the string to only include the MD5 result, not the end part that includes the file name function was called on
+		read(clientTemp, clientMD5, 32);//Read the MD5 from the file into our string
+		clientMD5[32] = '\0';//Correct the string to only include the MD5 result, and not the end "file name" part that includes the file name that the function was called on
 		
-		//Close the temporary file and delete it now that we are done with the MD5 creation
+		//Close the temporary file and delete it now that we're finished creating the MD5 for that file
 		close(clientTemp);
 		remove("clientTemp");
 
@@ -244,10 +244,10 @@ int main( int argc, char *argv[] ) {
 
 		//Check the status message and report it to the client before finally ending process
 		if(strcmp(buf, "y") == 0) {
-	    	printf("\nCLIENT: Good response from server, confirmed that our file is valid. Moving on...\n\n");
+	    	printf("\nCLIENT: Good response from server for file MD5, confirmed that our file is valid. Moving on...\n\n");
 	    }
 	    else if(strcmp(buf, "n") == 0) {
-	    	printf("\nCLIENT: Error response from server. Terminating.\n");
+	    	printf("\nCLIENT: Error response from server to our MD5 of file '%s'. Terminating.\n", curFile);
 	    	close(s);
 	    	exit(1);
 	    }
@@ -256,9 +256,9 @@ int main( int argc, char *argv[] ) {
 	    	close(s);
 	    	exit(1);
 	    }
-	    ptr = strtok(NULL, ";;");
+	    ptr = strtok(NULL, ";;");//Go to the next token in our list of files that we requested
 	}
-	printf("CLIENT: Final file transfered, end of process.\n");
+	printf("CLIENT: Final file transfered, ending processes.\n");
 	close(s);
     return 0;
 }
