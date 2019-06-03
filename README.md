@@ -20,8 +20,9 @@ While by no means is it complete, I believe it may serve as a decent learning to
 Options for the server are:
 * -D for debugging, which prints more information to terminal such as client IP
 * -NP which allows any password thrown at the server from the client to be accepted
-* -NT allows the client to take infinite time to respond with a file that they want once given the list
+* -NT Allows the client to take infinite time to respond with a file that they want once given the list
 * -SU Allows the user to designate they wish for the server to stay up and keep receiving new clients until they manually close the process
+* -RM Sets the server to recover after certain types of errors. Allows for better usage of -SU if the user wants to leave the server running without resetting on error.
 
 
 ### Client:
@@ -33,14 +34,15 @@ Options for the client are:
 
 ## Example usage
 ### Server
-![Server](https://imgur.com/12BINZA.png)
+![Server](https://imgur.com/RmRxzsW.png)
 
 
 ### Client
-![Client](https://imgur.com/H7sU9WK.png)
+![Client](https://imgur.com/AlHhq4W.png)
 
 
 ## Todo:
+* Consider changing the recovery mode process (using a goto). Make it such that the file transfer process is a function and based on that return value we can recover from an error depending on it's type
 * Change the password verification process to tell the client the timeout settings at the same time as server responds to password
 * Allow user to specify a timeout value rather than the default of 30 or no timeout at all
 * Reduce/eliminate use of certain high-cost functions

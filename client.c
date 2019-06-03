@@ -80,8 +80,8 @@ int isReceiving(int s, fd_set fds) {//Wait a preset time period for activity on 
 }
 
 int main( int argc, char *argv[] ) {
-	char *host;
-	char buf[MAX_LINE];
+	char *host;//IP address of the server we want to connect to
+	char buf[MAX_LINE];//Buffer we will use to send(), recv(), and write()
 	int s, len;
 	host = argv[1];
 	const char * SERVER_PORT = argv[2];
@@ -167,7 +167,7 @@ int main( int argc, char *argv[] ) {
 		strcat(fileList, buf);
 
 		//Copy list of files into buf temporarily
-		strcpy(buf, fileList + 1);//Copy only the file list of fileList into buf
+		strcpy(buf, fileList + 1);//Copy only the files of fileList into buf
 
 		//Set the files requested counter in string
 		sprintf(fileList, "%i", i);
@@ -200,7 +200,7 @@ int main( int argc, char *argv[] ) {
 			close(s);
 			exit(1);
 		}
-
+		
 		//Begin to recv() the file from server after opening our own local copy to write the data into
 		if(debugMode == 1) {printf("CLIENT: Valid response from server to request for file '%s', writing file and printing contents\nCLIENT: - Receiving file -\n\n", curFile);}
 		else {printf("CLIENT: Valid response from server to request for file '%s', writing file\n", curFile);}

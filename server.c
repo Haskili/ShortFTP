@@ -98,7 +98,7 @@ int isReceiving(int s, fd_set fds, int seconds, int microseconds) {//Returns 0 i
 }
 
 int main(int argc, char *argv[]) {
-	char buf[MAX_LINE];//Buffer used throughout the entire process to receive and send to client
+	char buf[MAX_LINE];//Buffer we will use to send(), recv(), and read()
 	int s, new_s, size, len;
 	const char * SERVER_PORT = argv[1];
 	const char * SERVER_PASSWORD = argv[2];
@@ -117,12 +117,14 @@ int main(int argc, char *argv[]) {
 	int noPassMode = 0; 
 	int noTimeOutMode = 0; 
 	int stayUpMode = 0;
+	int recoveryMode = 0;
 	if(argc != 3) {
 		for(int i = 3; i < argc; i++) {
 			if(strcmp(argv[i], "-D") == 0) {debugMode = 1;}//Debug mode for more verbose printing during process
 			else if(strcmp(argv[i], "-NP") == 0) {noPassMode = 1;}//No password mode to allow any password to be accepted
 			else if(strcmp(argv[i], "-NT") == 0) {noTimeOutMode = 1;}//No timeout mode to allow infinite time for client to choose file on receipt of list
 			else if(strcmp(argv[i], "-SU") == 0) {stayUpMode = 1;}//Stay up mode to keep the server up and ready to receive the next client after each transfer process until such time the user exits
+			else if(strcmp(argv[i], "-RM") == 0) {recoveryMode = 1;}//Recovers server to continue (resets) after fatal error (IE: Client requesting bad file)
 			else {//Alert client to invalid option and continue
 				printf("SERVER: Invalid option '%s'\n", argv[i]);
 				printf("SERVER: The valid options are '-D' for debugging mode, '-NP' for no password mode, and '-NT' for no timeout in requesting file\nSERVER: Continuing with process\n");
@@ -154,6 +156,8 @@ int main(int argc, char *argv[]) {
 		while((len = recv(new_s, buf, sizeof(buf), 0))) {
 			if(len < 0) {
 				perror("streak-talk-server: recv");
+				if(recoveryMode == 1) {goto endClientInteraction;}
+				close(new_s);
 				close(s);
 				exit(1);
 			}
@@ -161,6 +165,7 @@ int main(int argc, char *argv[]) {
 			if(strcmp(buf, SERVER_PASSWORD) != 0 && noPassMode == 0) {//Verify the password given by client matches what's in argv[2]
 				printf("SERVER: Bad password given, '%s'. Terminating.\n", buf);
 				send(new_s, "Bad password given", 18, 0);
+				if(recoveryMode == 1) {goto endClientInteraction;}
 				close(new_s);
 				close(s);
 				exit(1);
@@ -178,6 +183,7 @@ int main(int argc, char *argv[]) {
 			//If the client didn't want the list
 			if(strcmp(buf, "n") == 0) {
 				printf("SERVER: The client denied the file, exiting.\n");
+				if(recoveryMode == 1) {goto endClientInteraction;}
 				close(new_s);
 				close(s);
 				return 0;
@@ -186,6 +192,8 @@ int main(int argc, char *argv[]) {
 			//We can make the assumption that the client responded "y" from here because it wasn't "n" and client.c ensures valid input
 			if(createList() != 0) {//createList() returns 1 for errors
 				printf("SERVER: Couldn't create/open the list file. Terminating.\n");
+				if(recoveryMode == 1) {goto endClientInteraction;}
+				close(new_s);
 				close(s);
 				exit(1);
 		    }
@@ -195,6 +203,9 @@ int main(int argc, char *argv[]) {
 			if(listFile < 0) {//Verify we can open the file that contains our list of files in directory
 				printf("SERVER: Error opening list file. Terminating.\n");
 				send(new_s, "Unable to open file.", 20, 0);//Alert client to error
+				if(recoveryMode == 1) {goto endClientInteraction;}
+				close(new_s);
+				close(s);
 				exit(1);
 			}
 
@@ -238,6 +249,7 @@ int main(int argc, char *argv[]) {
 			//If we timed out of our 'get filename request' loop without getting a file name request
 			if(noTimeOutMode == 0 && gotRequest != 1) {
 				printf("SERVER: We didn't receive a filename in alloted time, terminating.\n");
+				if(recoveryMode == 1) {goto endClientInteraction;}
 				close(new_s);
 				close(s);
 				exit(1);
@@ -266,6 +278,7 @@ int main(int argc, char *argv[]) {
 				if(requestedFile < 0) {
 					printf("SERVER: Error opening requested file. Terminating.\n");
 					send(new_s, "n", 1, 0);//Alert client to error
+					if(recoveryMode == 1) {goto endClientInteraction;}
 					close(new_s);
 					close(s);
 					exit(1);
@@ -296,6 +309,7 @@ int main(int argc, char *argv[]) {
 				if(gotFile != 1) {
 					printf("SERVER: Error finding requested file '%s'. Terminating.\n", curFile);
 					send(new_s, "n", 1, 0);//Alert client to error
+					if(recoveryMode == 1) {goto endClientInteraction;}
 					close(new_s);
 					close(s);
 					exit(1);
@@ -345,6 +359,7 @@ int main(int argc, char *argv[]) {
 						else {
 							printf("SERVER: The client's md5 '%s' didn't match our '%s'. Sending error message and terminating.\n\n", buf, serverMD5);
 							send(new_s, "n", 1, 0);
+							if(recoveryMode == 1) {goto endClientInteraction;}
 							close(new_s);
 							close(s);
 							exit(1);
@@ -355,8 +370,9 @@ int main(int argc, char *argv[]) {
 			}//End of client-server interaction while-loop
 		
 			//Ask the user if they wish to continue to receive new clients if we haven't set it to stay up after each run with -SU
+			endClientInteraction: ;//Designated point for process to recover to in recovery mode, allowing server to keep going after error in process
 			if(stayUpMode == 0) {
-				printf("SERVER: We finished sending the file to our client, would you like to stay up for the next client? (yes = y, no = n)\n");
+				printf("SERVER: We finished sending the file(s) to our client, would you like to stay up for the next client? (yes = y, no = n)\n");
 				while(1) {
 					memset(buf, 0, MAX_LINE);
 					fgets(buf, MAX_LINE, stdin);
