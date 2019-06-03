@@ -214,13 +214,14 @@ int main(int argc, char *argv[]) {
 			int timeoutVal = 0;
 			int gotRequest = 0;
 			if(noTimeOutMode == 0) {printf("SERVER: List was sent to the client, waiting 30 seconds for a response.\n");}
-			else if(noTimeOutMode == 1) {printf("SERVER: List was sent to the client, waiting for a response.\n");}	
+			if(noTimeOutMode == 1) {printf("SERVER: List was sent to the client, waiting for a response.\n");}	
 			while(1) {
 				//If we're receiving anything on new_s within the next 10 seconds, recv() it and break out
 				if(isReceiving(new_s, readfds, 10, 0) == 1) {
 					memset(buf, 0, MAX_LINE);
 					recv(new_s, buf, MAX_LINE, 0);
-					printf("SERVER: We received a request for file '%s'\n", buf);
+					if(debugMode == 1) {printf("SERVER: We received a request of a list '%s' from client\n\n", buf);}
+					if(debugMode == 0) {printf("SERVER: We received a request list from the client\n\n");}
 					gotRequest = 1;
 					break;
 				}
@@ -256,7 +257,7 @@ int main(int argc, char *argv[]) {
 				//Set the curFile equal to the file in the list we're current at as defined by ptr
 				strcpy(curFile, ptr);
 				curFile[strlen(ptr)] = '\0';
-				printf("SERVER: Our current file name is '%s'\n", curFile);
+				printf("SERVER: Processing the request for file '%s'\n", curFile);
 
 				//Try to open the requested file
 				int requestedFile = open(curFile, O_RDWR);
@@ -275,7 +276,8 @@ int main(int argc, char *argv[]) {
 				char serverMD5[MAX_LINE];//String to hold result of the server MD5 on the original file asked for
 				strcpy(md5Command, "md5sum ");//Prep the system() call string
 				strcat(md5Command, curFile);//Get the filename requested and put it into the command string
-				strcat(md5Command, " | tee -a serverTemp");
+				if(debugMode == 1) {strcat(md5Command, " | tee -a serverTemp");}//Append command to write result into temporary file and stdout
+				if(debugMode == 0) {strcat(md5Command, " > serverTemp 2> /dev/null");}//Append command to write result to temporary file and not stdout
 
 				//Check against all files in folder and see if the requested file matches one of them as a final security check
 				struct dirent* DirEntry;
@@ -315,7 +317,8 @@ int main(int argc, char *argv[]) {
 				close(requestedFile);
 
 				//We get the md5 of our file and save it for the next step
-				printf("SERVER: Grabbing the md5sum for our file\n\n");
+				printf("SERVER: Grabbing the md5sum for our file");
+				if(debugMode == 1) {printf("\n\n");}
 				int serverTemp = open("serverTemp", O_CREAT | O_RDWR | O_TRUNC, 0644);//Create a temporary file
 				system(md5Command);//Execute the md5sum on our file with output appended to our temporary file
 				read(serverTemp, serverMD5, 32);//Read the result from the file in our string
@@ -336,7 +339,7 @@ int main(int argc, char *argv[]) {
 						if(strcmp(buf, serverMD5) == 0) {
 							memset(buf, 0, MAX_LINE);
 							send(new_s, "y", 1, 0);
-							printf("SERVER: The client's md5 matched. Sending good response message.\n\n");
+							printf("SERVER: The client's md5 matched. Sending good response message and moving on...\n\n");
 							break;
 						}
 						else {
@@ -349,7 +352,7 @@ int main(int argc, char *argv[]) {
 					}
 				}
 				ptr = strtok(NULL, ";;");//Increment the ptr to go to the next token (filename) in curList
-			}
+			}//End of client-server interaction while-loop
 		
 			//Ask the user if they wish to continue to receive new clients if we haven't set it to stay up after each run with -SU
 			if(stayUpMode == 0) {
@@ -357,7 +360,7 @@ int main(int argc, char *argv[]) {
 				while(1) {
 					memset(buf, 0, MAX_LINE);
 					fgets(buf, MAX_LINE, stdin);
-					buf[1] = '\0';//Correction for new line on fgets getting filename
+					buf[1] = '\0';//Correction for new line on fgets
 					if(strcmp(buf, "y") == 0 || strcmp(buf, "Y") == 0) {
 						printf("SERVER: Restarting the server and listening for a connection on port '%s' for a new client.\n", SERVER_PORT);
 						break;

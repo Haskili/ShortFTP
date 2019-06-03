@@ -175,7 +175,7 @@ int main( int argc, char *argv[] ) {
 		//Put the list being held by buf back into the fileList string and print it
 		strcat(fileList, buf);
 	}
-	printf("CLIENT: We requested %i files from the server, waiting for response from server...\n", atoi(fileList));
+	printf("CLIENT: We requested %i files from the server, we will begin writing upon response from server...\n\n", atoi(fileList));
 	send(s, fileList, MAX_LINE, 0);//Send filename list
 
 	//Setup the structures for file names for the next part
@@ -222,10 +222,12 @@ int main( int argc, char *argv[] ) {
 		//Prepare the string for the MD5 command
 		strcpy(md5Command, "md5sum DF-");
 		strcat(md5Command, curFile);
-		strcat(md5Command, " | tee -a clientTemp");//We use the | tee -a clientTemp to put the result of our command into that file
+		if(debugMode == 1) {strcat(md5Command, " | tee -a clientTemp");}//Append command to write result into temporary file and stdout
+		if(debugMode == 0) {strcat(md5Command, " > clientTemp 2> /dev/null");}//Append command to write result into temporary file and not stdout
 
 		//Get the md5 of our downloaded file
-		printf("CLIENT: Grabbing the md5sum of our downloaded file and checking with server\n\n");
+		printf("CLIENT: Grabbing the md5sum of our downloaded file and checking with server");
+		if(debugMode == 1) {printf("\n\n");}
 		int clientTemp = open("clientTemp", O_CREAT | O_RDWR | O_TRUNC, 0644);//Create a temporary file to hold our md5 result
 		system(md5Command);//Get the md5 for our downloaded file and store it in the temporary file
 		read(clientTemp, clientMD5, 32);//Read the MD5 from the file into our string
