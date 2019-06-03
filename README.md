@@ -33,11 +33,11 @@ Options for the client are:
 
 ## Example usage
 ### Server
-![Server](https://imgur.com/fzdHg3Q.png)
+![Server](https://imgur.com/12BINZA.png)
 
 
 ### Client
-![Client](https://imgur.com/39ckNfM.png)
+![Client](https://imgur.com/H7sU9WK.png)
 
 
 ## Todo:
