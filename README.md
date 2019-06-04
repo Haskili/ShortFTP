@@ -42,8 +42,10 @@ Options for the client are:
 
 
 ## Todo:
+* Alter printf() statements on errors that are recoverable in server.c to reflect if -SU is set and we can continue
 * Consider changing the recovery mode process (using a goto). Make it such that the file transfer process is a function and based on that return value we can recover from an error depending on it's type
 * Change the password verification process to tell the client the timeout settings at the same time as server responds to password
+* Consider adding a recovery mode for the client.c as well
 * Allow user to specify a timeout value rather than the default of 30 or no timeout at all
 * Reduce/eliminate use of certain high-cost functions
 * Re-comment some of the items in the client.c and server.c such as lookup_and_connect()

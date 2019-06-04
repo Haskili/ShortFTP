@@ -164,17 +164,17 @@ int main(int argc, char *argv[]) {
 
 			if(strcmp(buf, SERVER_PASSWORD) != 0 && noPassMode == 0) {//Verify the password given by client matches what's in argv[2]
 				printf("SERVER: Bad password given, '%s'. Terminating.\n", buf);
-				send(new_s, "Bad password given", 18, 0);
+				send(new_s, "BAD", 3, 0);
 				if(recoveryMode == 1) {goto endClientInteraction;}
 				close(new_s);
 				close(s);
 				exit(1);
 			}
-			printf("SERVER: Good password from client\n");
 
 			//Alert client of good password and client will accept or deny the list (it could be massive depending on directory)
-			printf("SERVER: Asking client to accept list\n");
-			send(new_s, "y", 1, 0);//Alert the client that the password was accepted
+			printf("SERVER: Valid password from client, sending a good response and waiting for them to accept the list\n");
+			send(new_s, "VALID", 5, 0);
+			
 
 			//Receive the response of the client on whether they want the list
             memset(buf, 0, MAX_LINE);
@@ -182,7 +182,7 @@ int main(int argc, char *argv[]) {
 
 			//If the client didn't want the list
 			if(strcmp(buf, "n") == 0) {
-				printf("SERVER: The client denied the file, exiting.\n");
+				printf("SERVER: The client denied the list, exiting.\n");
 				if(recoveryMode == 1) {goto endClientInteraction;}
 				close(new_s);
 				close(s);
@@ -191,7 +191,7 @@ int main(int argc, char *argv[]) {
 
 			//We can make the assumption that the client responded "y" from here because it wasn't "n" and client.c ensures valid input
 			if(createList() != 0) {//createList() returns 1 for errors
-				printf("SERVER: Couldn't create/open the list file. Terminating.\n");
+				printf("SERVER: Couldn't create/open the list. Terminating.\n");
 				if(recoveryMode == 1) {goto endClientInteraction;}
 				close(new_s);
 				close(s);
@@ -209,8 +209,8 @@ int main(int argc, char *argv[]) {
 				exit(1);
 			}
 
-		    //Send list file to the client
-			printf("SERVER: The client accepted the list, sending...\n");
+		    //Send list of file names to the client
+			printf("SERVER: The client accepted the list, sending the file name list\n");
 			if(debugMode == 1) {printf("SERVER: - Start list -\n\n");}
 			while((size = read(listFile, buf, MAX_SIZE)) != 0) {
 				buf[MAX_LINE - 1] = '\0';
@@ -218,14 +218,14 @@ int main(int argc, char *argv[]) {
 				if(debugMode == 1) {write(1, buf, size);}//Write the buffer as we update it with read() into stdout if debug on
 			}
 			if(debugMode == 1) {printf("\nSERVER: - End list -\n");}
-			close (listFile);
+			close(listFile);
 			remove("DirectoryList");
 
 			//Wait up to 30 seconds or forever if -NT is set for client to send us their filename choice
 			int timeoutVal = 0;
 			int gotRequest = 0;
-			if(noTimeOutMode == 0) {printf("SERVER: List was sent to the client, waiting 30 seconds for a response.\n");}
-			if(noTimeOutMode == 1) {printf("SERVER: List was sent to the client, waiting for a response.\n");}	
+			if(noTimeOutMode == 0) {printf("SERVER: Waiting 30 seconds for a response from client.\n");}
+			if(noTimeOutMode == 1) {printf("SERVER: Waiting for a response from client.\n");}	
 			while(1) {
 				//If we're receiving anything on new_s within the next 10 seconds, recv() it and break out
 				if(isReceiving(new_s, readfds, 10, 0) == 1) {
@@ -255,12 +255,18 @@ int main(int argc, char *argv[]) {
 				exit(1);
 			}
 
-			//Setup structures for list of file names we just received from client
-			if(atoi(buf) == 0) {/* EXIT HERE ON NO FILES REQUESTED */}
+			//Check to make sure we didn't receive an empty request list
+			if(atoi(buf) == 0) {
+				printf("SERVER: Client didn't select any files. Terminating.\n");
+				if(recoveryMode == 1) {goto endClientInteraction;}
+				close(new_s);
+				close(s);
+				exit(1);
+			}
+			
+			//Setup structures to use list we received from client
 			char curList[MAX_LINE], curFile[MAX_LINE];
 			strcpy(curList, buf);
-
-			//Create a ptr for tokens of filenames
 			char *ptr = strtok(curList, ";;");
 			ptr = strtok(NULL, ";;");
 			
@@ -367,7 +373,7 @@ int main(int argc, char *argv[]) {
 					}
 				}
 				ptr = strtok(NULL, ";;");//Increment the ptr to go to the next token (filename) in curList
-			}//End of client-server interaction while-loop
+			}
 		
 			//Ask the user if they wish to continue to receive new clients if we haven't set it to stay up after each run with -SU
 			endClientInteraction: ;//Designated point for process to recover to in recovery mode, allowing server to keep going after error in process
@@ -378,7 +384,7 @@ int main(int argc, char *argv[]) {
 					fgets(buf, MAX_LINE, stdin);
 					buf[1] = '\0';//Correction for new line on fgets
 					if(strcmp(buf, "y") == 0 || strcmp(buf, "Y") == 0) {
-						printf("SERVER: Restarting the server and listening for a connection on port '%s' for a new client.\n", SERVER_PORT);
+						printf("\nSERVER: Restarting the server and listening for a connection on port '%s' for a new client.\n", SERVER_PORT);
 						break;
 					}
 					else if (strcmp(buf, "n") == 0 || strcmp(buf, "N") == 0) {
@@ -386,11 +392,11 @@ int main(int argc, char *argv[]) {
 						close(s);
 						return 0;
 					}
-					else {printf("SERVER: Invalid input: '%s', please type 'y' for yes, or 'n' for no\n", buf);}//User is alerted to invalid input and we will continue waiting until valid input
+					else {printf("SERVER: Invalid input, please type 'y' for yes, or 'n' for no\n");}//User is alerted to invalid input and we will continue waiting until valid input
 				}
 			}
+			if(stayUpMode == 1) {printf("\nSERVER: Restarting the server and listening for a connection on port '%s' for a new client.\n", SERVER_PORT);}
 		}
-
 	}
 	close(new_s);
 	close(s);

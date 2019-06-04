@@ -10,20 +10,19 @@
 #define MAX_LINE 256
 #define MAX_SIZE 30
 
-int verifyPassword(int s, const char * password, char * buf) {//Send a given password through a given sockfd
+int verifyPassword(int s, const char * password, char * buf) {//Used to send() a given password through a given sockfd and recv() the response
 	send(s, password, 15, 0);//Send the password to server
 
     //Setup for receiving the response from server
     memset(buf, 0, MAX_LINE);
     recv(s, buf, MAX_LINE, 0);
 
-    //Ask if the server verified our password
-    if(strcmp(buf, "y") == 0) {
+    //Ask if the server verified our password and what timeout is set to
+    if(strcmp(buf, "VALID") == 0) {
     	return 0;
     }
 
-    //Server didn't give good response to password we sent, alert client
-    printf("CLIENT: Error verifying password with server, terminating.\n");
+    //Server didn't validate client's password, return bad value
 	return 1;
 }
 
@@ -114,7 +113,9 @@ int main( int argc, char *argv[] ) {
 	FD_SET(s, &readfds);//Add s to list of sockets
 
 	//Receive a verification from server that we gave a valid password
-    if(verifyPassword(s, password, buf) != 0) {
+    if(verifyPassword(s, password, buf) == 1) {
+    	//Server didn't give good response to password we sent, alert client and exit
+    	printf("CLIENT: Error verifying password with server, terminating.\n");
     	close(s);
     	exit(1);
     }
@@ -149,11 +150,11 @@ int main( int argc, char *argv[] ) {
 	}
 	printf("\nCLIENT: - End list -\n");
 
-	//Get the filename choice(s) and send the list back to the server
-	printf("CLIENT: Please choose a file(s) from the list above and finish by entering a ';;' or an empty line.\n\n");
+	//Get the filename choice(s) from client
+	printf("CLIENT: Please choose up to 9 files from the list above and finish by entering a ';;' or an empty line.\n\n");
 	char fileList[MAX_LINE];
 	fileList[0] = '0';
-	for(int i = 1; i < 10; i++) {
+	for(int i = 1; i < 10; i++) {//Capped at 9 file requests for every connection
 		memset(buf, 0, MAX_LINE);
 		fgets(buf, MAX_LINE, stdin);
 		buf[strlen(buf) - 1] = '\0';//Correction for new line on fgets getting input
@@ -175,6 +176,15 @@ int main( int argc, char *argv[] ) {
 		//Put the list being held by buf back into the fileList string and print it
 		strcat(fileList, buf);
 	}
+	
+	//Check that client asked for at least one file
+	if(atoi(fileList) == 0) {
+		printf("CLIENT: You didn't select any files from the list to download. Alerting server and exiting.\n");
+		close(s);
+		exit(1);
+	}
+
+	//Send the file request list to the server
 	printf("CLIENT: We requested %i files from the server, we will begin writing upon response from server...\n\n", atoi(fileList));
 	send(s, fileList, MAX_LINE, 0);//Send filename list
 
@@ -200,14 +210,16 @@ int main( int argc, char *argv[] ) {
 			close(s);
 			exit(1);
 		}
-		
-		//Begin to recv() the file from server after opening our own local copy to write the data into
+
+		//Alert client as appropriate and prepare for downloading the current file
 		if(debugMode == 1) {printf("CLIENT: Valid response from server to request for file '%s', writing file and printing contents\nCLIENT: - Receiving file -\n\n", curFile);}
-		else {printf("CLIENT: Valid response from server to request for file '%s', writing file\n", curFile);}
+		if(debugMode == 0) {printf("CLIENT: Valid response from server to request for file '%s', writing file\n", curFile);}
 		strcpy(downloadFileStr, "DF-");
 		strcat(downloadFileStr, curFile);
 		int downloadFile = open(downloadFileStr, O_CREAT | O_WRONLY | O_TRUNC, 0644);//Open file we're going to write our information into
 		int bytesReceived = 0;
+		
+		//Begin to recv() the file from server
 		while((len = recv(s, buf, MAX_LINE, 0))) {
 			write(downloadFile, buf, len);
 			if(debugMode == 1) {write(1, buf, len);}//Write file to terminal in debug mode as we recv() it
@@ -219,13 +231,13 @@ int main( int argc, char *argv[] ) {
 		printf("CLIENT: Finished receiving file '%s' from server. %i bytes received\n", curFile, bytesReceived);
 		close(downloadFile);
 
-		//Prepare the string for the MD5 command
+		//Prepare the string for the system() MD5 command
 		strcpy(md5Command, "md5sum DF-");
 		strcat(md5Command, curFile);
 		if(debugMode == 1) {strcat(md5Command, " | tee -a clientTemp");}//Append command to write result into temporary file and stdout
 		if(debugMode == 0) {strcat(md5Command, " > clientTemp 2> /dev/null");}//Append command to write result into temporary file and not stdout
 
-		//Get the md5 of our downloaded file
+		//Get the md5 of our downloaded file with system()
 		printf("CLIENT: Grabbing the md5sum of our downloaded file and checking with server");
 		if(debugMode == 1) {printf("\n\n");}
 		int clientTemp = open("clientTemp", O_CREAT | O_RDWR | O_TRUNC, 0644);//Create a temporary file to hold our md5 result
