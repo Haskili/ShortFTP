@@ -57,7 +57,7 @@ int bind_and_listen(const char *service) {//Look at a particular port given and 
 		return -1;
 	}
 
-	//Iterate through the address list and try to perform passive open on each one
+	//Iterate through the address linked list and try to perform passive open on each one
 	for(rp = result; rp != NULL; rp = rp->ai_next) {
 		if((s = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol)) == -1) {
 			continue;
@@ -68,7 +68,7 @@ int bind_and_listen(const char *service) {//Look at a particular port given and 
 		close(s);
 	}
 
-	if(rp == NULL) {
+	if(rp == NULL) {//If our pointer is NULL
 		perror("stream-talk-server: bind");
 		return -1;
 	}
@@ -101,7 +101,7 @@ int isReceiving(int s, fd_set fds, int seconds, int microseconds) {//Returns 0 i
 
 int main(int argc, char *argv[]) {
 	char buf[MAX_LINE];//Buffer we will use to send(), recv(), and read()
-	int s, new_s, size, len;
+	int s, new_s, size;
 	const char * SERVER_PORT = argv[1];
 	const char * SERVER_PASSWORD = argv[2];
     fd_set readfds;//Create a structure to hold file descriptors
@@ -155,13 +155,11 @@ int main(int argc, char *argv[]) {
 	    }
 	    else {printf("SERVER: We found a potential client\n");}
 
-		while((len = recv(new_s, buf, sizeof(buf), 0))) {
-			if(len < 0) {
-				perror("streak-talk-server: recv");
-				if(recoveryMode == 1) {goto endClientInteraction;}
-				close(new_s);
-				close(s);
-				exit(1);
+		while(1) {
+			//Grab the password from the client (assuming it is sending it correctly upon connection)
+			if(isReceiving(new_s, readfds, 0, 500000) == 1) {
+				memset(buf, 0, MAX_LINE);
+				recv(new_s, buf, MAX_LINE, 0);
 			}
 
 			if(strcmp(buf, SERVER_PASSWORD) != 0 && noPassMode == 0) {//Verify the password given by client matches what's in argv[2]
@@ -399,6 +397,7 @@ int main(int argc, char *argv[]) {
 				}
 			}
 			if(stayUpMode == 1) {printf("\nSERVER: Restarting the server and listening for a connection on port '%s' for a new client.\n", SERVER_PORT);}
+			break;
 		}
 	}
 	close(new_s);

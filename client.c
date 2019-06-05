@@ -235,7 +235,7 @@ int main( int argc, char *argv[] ) {
 
 		//Get the server's response to our request 
 		memset(buf, 0, MAX_LINE);
-		recv(s, buf, 1, 0);
+		if(isReceiving(s, readfds, 0, 500000) == 1) {recv(s, buf, 1, 0);}
 
 		//If we got an bad or an invalid response from server
 		if(strcmp(buf, "y") != 0) {
@@ -287,7 +287,7 @@ int main( int argc, char *argv[] ) {
 
 		//Receive the status of the md5 check from the server
 		memset(buf, 0, MAX_LINE);
-		recv(s, buf, 1, 0);
+		if(isReceiving(s, readfds, 0, 500000) == 1) {recv(s, buf, 1, 0);}
 
 		//Check the status message and report it to the client before finally ending process
 		if(strcmp(buf, "y") == 0) {
