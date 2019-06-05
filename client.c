@@ -18,7 +18,7 @@ int verifyPassword(int s, const char * password, char * buf) {//Used to send() a
     recv(s, buf, MAX_LINE, 0);
 
     //Ask if the server verified our password and what timeout is set to
-    if(strcmp(buf, "VALID") == 0) {
+    if(strcmp(buf, "VALID-NT") == 0 || strcmp(buf, "VALID-TS") == 0) {
     	return 0;
     }
 
@@ -61,7 +61,7 @@ int lookup_and_connect(const char *host, const char *service) {
 	return s;
 }
 
-int isReceiving(int s, fd_set fds) {//Wait a preset time period for activity on a designated fd
+int isReceiving(int s, fd_set fds, int seconds, int microseconds) {//Wait a preset time period for activity on a designated fd
 	//Clear the fdset
 	FD_ZERO(&fds);
 	FD_SET(s, &fds);
@@ -120,6 +120,10 @@ int main( int argc, char *argv[] ) {
     	exit(1);
     }
 
+    //Check buff to see what timeout settings server sent along with our password validation and set ours accordingly
+    int serverTimeout = 1;
+    if(strcmp(buf, "VALID-NT") == 0) {serverTimeout = 0;}
+
     //Return response to server on whether we want to receive the list of files available
 	printf("CLIENT: List available from host with address '%s'\nCLIENT: Are you certain you want to download the list from this host? (yes = y, no = n)\n", argv[1]);
 	while(1) {
@@ -146,46 +150,75 @@ int main( int argc, char *argv[] ) {
 	while((len = recv(s, buf, MAX_LINE, 0))) {
 		write(1, buf, len);
 		memset(buf, 0, MAX_LINE);
-		if(isReceiving(s, readfds) == 0) {break;}//If we're not receiving anymore information, break out of the loop and continue
+		if(isReceiving(s, readfds, 0, 500000) == 0) {break;}//If we're not receiving anymore information, break out of the loop and continue
 	}
 	printf("\nCLIENT: - End list -\n");
 
-	//Get the filename choice(s) from client
+	//Alert user to choose from up to 9 items from the list and set up for the user give input
+	if(serverTimeout == 1) {printf("CLIENT: The server has given us a minute till the timeout for choosing files.\n");}
 	printf("CLIENT: Please choose up to 9 files from the list above and finish by entering a ';;' or an empty line.\n\n");
 	char fileList[MAX_LINE];
 	fileList[0] = '0';
-	for(int i = 1; i < 10; i++) {//Capped at 9 file requests for every connection
-		memset(buf, 0, MAX_LINE);
-		fgets(buf, MAX_LINE, stdin);
-		buf[strlen(buf) - 1] = '\0';//Correction for new line on fgets getting input
-		if(strcmp(buf, ";;") == 0 || strcmp(buf, "") == 0) {
-			memset(buf, 0, MAX_LINE);//Reset buffer
-			break;
+	int counter = 0;
+	int fileReqAmount = 0;
+	fd_set waitFDS;
+	
+	//Get the filenames the users wants
+	while(1) {
+		//Clear the fdset
+		FD_ZERO(&waitFDS);
+		FD_SET(0, &waitFDS);
+
+		//Reset the timevalues used for select() wait time
+		struct timeval tv;
+		tv.tv_sec = 1;
+		tv.tv_usec = 0;
+
+		//Get input on activity in stdin
+		if(select(1, &waitFDS, NULL, NULL, &tv) > 0) {
+			memset(buf, 0, MAX_LINE);
+			fgets(buf, MAX_LINE, stdin);
+			buf[strlen(buf) - 1] = '\0';//Correction for new line on fgets getting input
+			if(strcmp(buf, ";;") == 0 || strcmp(buf, "") == 0) {
+				memset(buf, 0, MAX_LINE);//Reset buffer
+				break;
+			}
+			//Increment the count of files we're requesting since we know user entered a name
+			fileReqAmount++;
+
+			//Append the list with the new file and the preliminary separator
+			strcat(fileList, ";;");
+			strcat(fileList, buf);
+
+			//Copy list of files into buf temporarily
+			strcpy(buf, fileList + 1);//Copy only the files of fileList into buf
+
+			//Set the files requested counter in string
+			sprintf(fileList, "%i", fileReqAmount);
+
+			//Put the list being held by buf back into the fileList string and print it
+			strcat(fileList, buf);
 		}
 
-		//Append the list with the new file and the preliminary separator
-		strcat(fileList, ";;");
-		strcat(fileList, buf);
-
-		//Copy list of files into buf temporarily
-		strcpy(buf, fileList + 1);//Copy only the files of fileList into buf
-
-		//Set the files requested counter in string
-		sprintf(fileList, "%i", i);
-
-		//Put the list being held by buf back into the fileList string and print it
-		strcat(fileList, buf);
+		//Increment counter for the seconds in the input loop and check if we need to exit()
+		counter++;
+		if(counter == 60 && serverTimeout == 1) {//This denotes the amount of seconds until we leave the loop if applicable
+			printf("CLIENT: We were timed out by the server. Terminating.\n");
+			close(s);
+			exit(1);
+		}
+		if(fileReqAmount == 9) {break;}//This denotes the maximum files allowed to request
 	}
 	
 	//Check that client asked for at least one file
-	if(atoi(fileList) == 0) {
+	if(atoi(fileList) == 0 || fileReqAmount == 0) {//Added in additional condition for safety reasons
 		printf("CLIENT: You didn't select any files from the list to download. Alerting server and exiting.\n");
 		close(s);
 		exit(1);
 	}
 
 	//Send the file request list to the server
-	printf("CLIENT: We requested %i files from the server, we will begin writing upon response from server...\n\n", atoi(fileList));
+	printf("CLIENT: We requested %i files from the server, waiting for server response...\n\n", atoi(fileList));
 	send(s, fileList, MAX_LINE, 0);//Send filename list
 
 	//Setup the structures for file names for the next part
@@ -225,7 +258,7 @@ int main( int argc, char *argv[] ) {
 			if(debugMode == 1) {write(1, buf, len);}//Write file to terminal in debug mode as we recv() it
 			bytesReceived += len; 
 			memset(buf, 0, MAX_LINE);
-			if(isReceiving(s, readfds) == 0) {break;}//If we're not receiving anymore information, break out of the loop and continue
+			if(isReceiving(s, readfds, 0, 500000) == 0) {break;}//If we're not receiving anymore information, break out of the loop and continue
 		}
 		if(debugMode == 1) {printf("\n\nCLIENT: - End file -\n");}
 		printf("CLIENT: Finished receiving file '%s' from server. %i bytes received\n", curFile, bytesReceived);

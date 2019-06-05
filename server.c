@@ -15,8 +15,8 @@
 #define MAX_SIZE 30
 
 int createList() {//Creates a file to store list of files in directory server is started, itself not included
-	struct dirent* DirEntry;
-	DIR* directory;
+	struct dirent *DirEntry;
+	DIR *directory;
 	directory = opendir(".");
 
 	//Verify we can create the file for our list of filenames
@@ -27,7 +27,9 @@ int createList() {//Creates a file to store list of files in directory server is
 
 	//Read each filename in present directory and write it into listFile
 	while((DirEntry = readdir(directory))) {//While our pointer is being moved to the next entry in our directory
-		if(strcmp(DirEntry->d_name, ".") != 0 && strcmp(DirEntry->d_name, "..") != 0) {//Check for extraneous entries in list "." & ".."
+		DIR *dirCheck;
+		dirCheck = opendir(DirEntry->d_name);
+		if(strcmp(DirEntry->d_name, ".") != 0 && strcmp(DirEntry->d_name, "..") != 0 && dirCheck == NULL) {//Check that current entry is a file (not folder) and for extraneous entries "."/".."
 			write(listFile, DirEntry->d_name, strlen(DirEntry->d_name));//Write the filename to the log file
 			write(listFile, "\n", 1);//Enter a newline to prepare for the next filename
 		}
@@ -171,12 +173,13 @@ int main(int argc, char *argv[]) {
 				exit(1);
 			}
 
-			//Alert client of good password and client will accept or deny the list (it could be massive depending on directory)
+			//Alert server of good password as well as send the response with timeout settings to client 
 			printf("SERVER: Valid password from client, sending a good response and waiting for them to accept the list\n");
-			send(new_s, "VALID", 5, 0);
+			if(noTimeOutMode == 0) {send(new_s, "VALID-TS", 8, 0);}//Send client response with timeout turned on
+			if(noTimeOutMode == 1) {send(new_s, "VALID-NT", 8, 0);}//Send client response with timeout turned off
 			
 
-			//Receive the response of the client on whether they want the list
+			//Receive the client response on whether they want to receive the list (it could be massive depending on directory)
             memset(buf, 0, MAX_LINE);
 			recv(new_s, buf, 1, 0);
 
@@ -221,10 +224,10 @@ int main(int argc, char *argv[]) {
 			close(listFile);
 			remove("DirectoryList");
 
-			//Wait up to 30 seconds or forever if -NT is set for client to send us their filename choice
+			//Wait up to 60 seconds or forever if -NT is set for client to send us their filename choice
 			int timeoutVal = 0;
 			int gotRequest = 0;
-			if(noTimeOutMode == 0) {printf("SERVER: Waiting 30 seconds for a response from client.\n");}
+			if(noTimeOutMode == 0) {printf("SERVER: Waiting 1 minute for a response from client.\n");}
 			if(noTimeOutMode == 1) {printf("SERVER: Waiting for a response from client.\n");}	
 			while(1) {
 				//If we're receiving anything on new_s within the next 10 seconds, recv() it and break out
@@ -237,13 +240,13 @@ int main(int argc, char *argv[]) {
 					break;
 				}
 
-				//If we didn't set no timeout and it's been 30 seconds, break out of loop
-				if(noTimeOutMode == 0 && timeoutVal == 2) {break;}//The timeoutVal starts at 0 and increments after each 10 seconds of no information on new_s, so at '== 2' 30 seconds have passed
-
-				//Else we increment the timeout value and alert the server appropriately
+				//Otherwise, we increment the timeout value and alert the server appropriately
 				timeoutVal++;
-				if(noTimeOutMode == 0) {printf("SERVER: Client hasn't sent a filename yet. %i seconds remaining.\n", ((3-timeoutVal)*10));}
+				if(noTimeOutMode == 0) {printf("SERVER: Client hasn't sent a filename yet. %i seconds remaining until client is dropped.\n", ((6-timeoutVal)*10));}
 				else if(noTimeOutMode == 1) {printf("SERVER: Client hasn't sent a filename yet. %i seconds have passed.\n", (timeoutVal*10));}
+
+				//If the user didn't set NT and it's been 60 seconds, break out of loop
+				if(noTimeOutMode == 0 && timeoutVal == 6) {break;}
 			}
 			
 			//If we timed out of our 'get filename request' loop without getting a file name request
@@ -257,7 +260,7 @@ int main(int argc, char *argv[]) {
 
 			//Check to make sure we didn't receive an empty request list
 			if(atoi(buf) == 0) {
-				printf("SERVER: Client didn't select any files. Terminating.\n");
+				printf("SERVER: Client didn't select any files in their list. Terminating.\n");
 				if(recoveryMode == 1) {goto endClientInteraction;}
 				close(new_s);
 				close(s);
@@ -324,7 +327,7 @@ int main(int argc, char *argv[]) {
 				//We see the requested file is in our PWD and can open it, return a good response "y" to client and send the data afterwards
 				printf("SERVER: Sending file to client\n");
 				send(new_s, "y", 1, 0);
-				if(debugMode == 1) {printf("\nSERVER: - Start file -\n\n");}
+				if(debugMode == 1) {printf("SERVER: - Start file -\n\n");}
 				int bytes = 0;
 				while((size = read(requestedFile, buf, MAX_SIZE)) != 0) {
 					buf[MAX_LINE - 1] = '\0';
@@ -378,7 +381,7 @@ int main(int argc, char *argv[]) {
 			//Ask the user if they wish to continue to receive new clients if we haven't set it to stay up after each run with -SU
 			endClientInteraction: ;//Designated point for process to recover to in recovery mode, allowing server to keep going after error in process
 			if(stayUpMode == 0) {
-				printf("SERVER: We finished sending the file(s) to our client, would you like to stay up for the next client? (yes = y, no = n)\n");
+				printf("SERVER: We finished with our current client, would you like to stay up for the next client? (yes = y, no = n)\n");
 				while(1) {
 					memset(buf, 0, MAX_LINE);
 					fgets(buf, MAX_LINE, stdin);
