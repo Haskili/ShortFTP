@@ -38,7 +38,7 @@ int lookup_and_connect(const char *host, const char *service) {
 	hints.ai_flags = 0;
 	hints.ai_protocol = 0;
 
-	if((s = getaddrinfo( host, service, &hints, &result)) != 0) {
+	if((s = getaddrinfo( host, service, &hints, &result)) != 0) {//Use getaddrinfo() to give us a linked list of addresses
 		fprintf( stderr, "stream-talk-client: getaddrinfo: %s\n", gai_strerror(s));
 		return -1;
 	}
@@ -53,7 +53,7 @@ int lookup_and_connect(const char *host, const char *service) {
 		}
 		close(s);
 	}
-	if(rp == NULL) {
+	if(rp == NULL) {//If our pointer in linked list is NULL
 		perror("stream-talk-client: connect");
 		return -1;
 	}
@@ -61,7 +61,7 @@ int lookup_and_connect(const char *host, const char *service) {
 	return s;
 }
 
-int isReceiving(int s, fd_set fds, int seconds, int microseconds) {//Wait a preset time period for activity on a designated fd
+int isReceiving(int s, fd_set fds, int seconds, int microseconds) {//Wait a given time period for activity on a designated fd
 	//Clear the fdset
 	FD_ZERO(&fds);
 	FD_SET(s, &fds);
@@ -71,7 +71,7 @@ int isReceiving(int s, fd_set fds, int seconds, int microseconds) {//Wait a pres
 	tv.tv_sec = 0;
 	tv.tv_usec = 500000;
 	
-	//Return 1 if we see activity
+	//Return 1 (true) if we see activity
 	if((select(s+1, &fds, NULL, NULL, &tv)) > 0) {
 		return 1;
 	}
@@ -92,17 +92,18 @@ int main( int argc, char *argv[] ) {
 	char downloadFileStr[MAX_LINE];//String to hold the name of the file that we will create to write downloaded information into
 
     if(!argv[1] || !argv[2] || !argv[3]) {
-       printf("CLIENT ERROR: Incorrect arguments,\nUSAGE: HOST-ADR, PORT#, PASS, -[OPTIONS]\n");
+       fprintf(stderr, "CLIENT ERROR: Incorrect arguments,\nUSAGE: HOST-ADR, PORT#, PASS, -[OPTIONS]\n");
        exit(1);
     }
 
     //Get all the options if user selected any - Might want to put ints inside of if() and instead ask for each mode operation is argc != 3 so it won't give error
 	int debugMode = 0;
+	int printFileMode = 0;
 	if(argc != 3) {
 		for(int i = 4; i < argc; i++) {
 			if(strcmp(argv[i], "-D") == 0) {debugMode = 1;}
-			else if(strcmp(argv[i], "-EXAMPLE_MODE") == 0) {/* Set the int value to 1 to designate it as 'on' */}//Example of usage for finding options
-			else {printf("CLIENT: Invalid option '%s', \nthe valid options are '-D' for debugging mode, '-MODE' for MODE, and 'XX'.\nCLIENT: Continuing with process.\n", argv[i]);}
+			else if(strcmp(argv[i], "-PF") == 0) {printFileMode = 1;}
+			else {fprintf(stderr, "CLIENT: Invalid option '%s'\nCLIENT: The valid options are listed in the README.md, continuing with process\n", argv[i]);}
 		}
 	}
 
@@ -115,7 +116,7 @@ int main( int argc, char *argv[] ) {
 	//Receive a verification from server that we gave a valid password
     if(verifyPassword(s, password, buf) == 1) {
     	//Server didn't give good response to password we sent, alert client and exit
-    	printf("CLIENT: Error verifying password with server, terminating.\n");
+    	fprintf(stderr, "CLIENT: Error verifying password with server, terminating.\n");
     	close(s);
     	exit(1);
     }
@@ -139,10 +140,10 @@ int main( int argc, char *argv[] ) {
 			send(s, buf, strlen(buf), 0);//Tell the server to not send the list
 			memset(buf, 0, MAX_LINE);
 			close(s);
-			printf("CLIENT: Told server not to send list, terminating\n");
+			fprintf(stderr, "CLIENT: Told server not to send list, terminating\n");
 			return 0;
 		}
-		else {printf("CLIENT: Invalid input: '%s', please type 'y' for yes, or 'n' for no\n", buf);}//User is alerted to invalid input and we will continue until valid input
+		else {fprintf(stderr, "CLIENT: Invalid input: '%s', please type 'y' for yes, or 'n' for no\n", buf);}//User is alerted to invalid input and we will continue until valid input
 	}
 
 	//Print the list of files received with clear indicators of start/stop 
@@ -203,7 +204,7 @@ int main( int argc, char *argv[] ) {
 		//Increment counter for the seconds in the input loop and check if we need to exit()
 		counter++;
 		if(counter == 60 && serverTimeout == 1) {//This denotes the amount of seconds until we leave the loop if applicable
-			printf("CLIENT: We were timed out by the server. Terminating.\n");
+			fprintf(stderr, "CLIENT: We were timed out by the server. Terminating.\n");
 			close(s);
 			exit(1);
 		}
@@ -212,7 +213,7 @@ int main( int argc, char *argv[] ) {
 	
 	//Check that client asked for at least one file
 	if(atoi(fileList) == 0 || fileReqAmount == 0) {//Added in additional condition for safety reasons
-		printf("CLIENT: You didn't select any files from the list to download. Alerting server and exiting.\n");
+		fprintf(stderr, "CLIENT: You didn't select any files from the list to download. Alerting server and exiting.\n");
 		close(s);
 		exit(1);
 	}
@@ -239,14 +240,14 @@ int main( int argc, char *argv[] ) {
 
 		//If we got an bad or an invalid response from server
 		if(strcmp(buf, "y") != 0) {
-			printf("CLIENT: We received an invalid or bad response from the server for our request of file '%s'. Terminating.\n", curFile);
+			fprintf(stderr, "CLIENT: We received an invalid or bad response from the server for our request of file '%s'. Terminating.\n", curFile);
 			close(s);
 			exit(1);
 		}
 
 		//Alert client as appropriate and prepare for downloading the current file
-		if(debugMode == 1) {printf("CLIENT: Valid response from server to request for file '%s', writing file and printing contents\nCLIENT: - Receiving file -\n\n", curFile);}
-		if(debugMode == 0) {printf("CLIENT: Valid response from server to request for file '%s', writing file\n", curFile);}
+		if(printFileMode == 1) {printf("CLIENT: Valid response from server to request for file '%s', writing file and printing contents\nCLIENT: - Receiving file -\n\n", curFile);}
+		if(printFileMode == 0) {printf("CLIENT: Valid response from server to request for file '%s', writing file\n", curFile);}
 		strcpy(downloadFileStr, "DF-");
 		strcat(downloadFileStr, curFile);
 		int downloadFile = open(downloadFileStr, O_CREAT | O_WRONLY | O_TRUNC, 0644);//Open file we're going to write our information into
@@ -255,12 +256,12 @@ int main( int argc, char *argv[] ) {
 		//Begin to recv() the file from server
 		while((len = recv(s, buf, MAX_LINE, 0))) {
 			write(downloadFile, buf, len);
-			if(debugMode == 1) {write(1, buf, len);}//Write file to terminal in debug mode as we recv() it
+			if(printFileMode == 1) {write(1, buf, len);}//Write file to terminal in debug mode as we recv() it
 			bytesReceived += len; 
 			memset(buf, 0, MAX_LINE);
 			if(isReceiving(s, readfds, 0, 500000) == 0) {break;}//If we're not receiving anymore information, break out of the loop and continue
 		}
-		if(debugMode == 1) {printf("\n\nCLIENT: - End file -\n");}
+		if(printFileMode == 1) {printf("\nCLIENT: - End file -\n");}
 		printf("CLIENT: Finished receiving file '%s' from server. %i bytes received\n", curFile, bytesReceived);
 		close(downloadFile);
 
@@ -294,12 +295,12 @@ int main( int argc, char *argv[] ) {
 	    	printf("\nCLIENT: Good response from server for file MD5, confirmed that our file is valid. Moving on...\n\n");
 	    }
 	    else if(strcmp(buf, "n") == 0) {
-	    	printf("\nCLIENT: Error response from server to our MD5 of file '%s'. Terminating.\n", curFile);
+	    	fprintf(stderr, "\nCLIENT: Bad response from server to our MD5 of file '%s'. Terminating.\n", curFile);
 	    	close(s);
 	    	exit(1);
 	    }
 	    else {
-	    	printf("\nCLIENT: Invalid response from server '%s'. Terminating.\n", buf);
+	    	fprintf(stderr, "\nCLIENT: Invalid response from server '%s'. Terminating.\n", buf);
 	    	close(s);
 	    	exit(1);
 	    }

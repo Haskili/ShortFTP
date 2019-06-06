@@ -18,10 +18,10 @@ While by no means is it complete, I believe it may serve as a decent learning to
 `(Port number) (Password) (Options)`
 
 Options for the server are:
-* -D for debugging, which prints more information to terminal such as client IP
+* -D turns on debugging, which prints more information to terminal such as client IP
 * -NP which allows any password thrown at the server from the client to be accepted
 * -NT Allows the client to take infinite time to respond with a file that they want once given the list
-* -SU Allows the user to designate they wish for the server to stay up and keep receiving new clients until they manually close the process
+* -SU Allows the server to designate they wish for the server to stay up and keep receiving new clients until they manually close the process
 * -RM Sets the server to recover after certain types of errors. Allows for better usage of -SU if the user wants to leave the server running without resetting on error.
 
 
@@ -29,16 +29,17 @@ Options for the server are:
 `(Server Address) (Server Port) (Password) (Options)`
 
 Options for the client are:
-* -D for debugging, which prints more information to terminal such as file contents as it's received
+* -D turns on debugging, which prints more information to terminal such as the MD5 as it's created
+* -PF allows the client to see the file in terminal as it's received
 
 
 ## Example usage
 ### Server
-![Server](https://imgur.com/RmRxzsW.png)
+![Server](https://imgur.com/UJsUlxB.png)
 
 
 ### Client
-![Client](https://imgur.com/AlHhq4W.png)
+![Client](https://imgur.com/adCRoE7.png)
 
 
 ## Todo:
