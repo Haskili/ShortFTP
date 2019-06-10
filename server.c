@@ -104,10 +104,10 @@ int main(int argc, char *argv[]) {
 	int s, new_s, size;
 	const char * SERVER_PORT = argv[1];
 	const char * SERVER_PASSWORD = argv[2];
-    fd_set readfds;//Create a structure to hold file descriptors
-    FD_ZERO(& readfds);//Reset file set
     struct sockaddr_in clientAddr;//Holds our client address
 	socklen_t clientAddrSize = sizeof(struct sockaddr_in);
+	fd_set readfds;//Create a structure to hold file descriptors
+    FD_ZERO(& readfds);//Reset the file set
 
     if(!argv[1] || !argv[2]) {//Check that port and password are given by user
     	fprintf(stderr, "SERVER: Incorrect arguments,\nUSAGE: PORT#, PASSWORD, -[OPTIONS]\n");
@@ -120,6 +120,7 @@ int main(int argc, char *argv[]) {
 	int noTimeOutMode = 0; 
 	int stayUpMode = 0;
 	int recoveryMode = 0;
+	int printFileMode = 0;
 	if(argc != 3) {
 		for(int i = 3; i < argc; i++) {
 			if(strcmp(argv[i], "-D") == 0) {debugMode = 1;}//Debug mode for more verbose printing during process
@@ -127,6 +128,7 @@ int main(int argc, char *argv[]) {
 			else if(strcmp(argv[i], "-NT") == 0) {noTimeOutMode = 1;}//No timeout mode to allow infinite time for client to choose file on receipt of list
 			else if(strcmp(argv[i], "-SU") == 0) {stayUpMode = 1;}//Stay up mode to keep the server up and ready to receive the next client after each transfer process until such time the user exits
 			else if(strcmp(argv[i], "-RM") == 0) {recoveryMode = 1;}//Recovers server to continue (resets) after fatal error (IE: Client requesting bad file)
+			else if(strcmp(argv[i], "-PF") == 0) {printFileMode = 1;}//Prints file as we read() it into stdout
 			else {//Alert client to invalid option and continue
 				fprintf(stderr, "SERVER: Invalid option '%s'\nSERVER: The valid options are listed in the README.md, continuing with process\n", argv[i]);
 			}
@@ -161,7 +163,7 @@ int main(int argc, char *argv[]) {
 		}
 
 		if(strcmp(buf, SERVER_PASSWORD) != 0 && noPassMode == 0) {//Verify the password given by client matches what's in argv[2]
-			fprintf(stderr, "SERVER: Bad password given, '%s'. Terminating.\n", buf);
+			fprintf(stderr, "SERVER: Bad password given, '%s'. Terminating connection with client.\n", buf);
 			send(new_s, "BAD", 3, 0);
 			if(recoveryMode == 1) {goto endClientInteraction;}
 			close(new_s);
@@ -171,17 +173,15 @@ int main(int argc, char *argv[]) {
 
 		//Alert server of good password as well as send the response with timeout settings to client 
 		printf("SERVER: Valid password from client, sending a good response and waiting for them to accept the list\n");
-		if(noTimeOutMode == 0) {send(new_s, "VALID-TS", 8, 0);}//Send client response with timeout turned on
-		if(noTimeOutMode == 1) {send(new_s, "VALID-NT", 8, 0);}//Send client response with timeout turned off
+		noTimeOutMode == 0 ? send(new_s, "VALID-TS", 8, 0) : send(new_s, "VALID-NT", 8, 0);
 		
-
 		//Receive the client response on whether they want to receive the list (it could be massive depending on directory)
         memset(buf, 0, MAX_LINE);
 		recv(new_s, buf, 1, 0);
 
 		//If the client didn't want the list
 		if(strcmp(buf, "n") == 0) {
-			printf("SERVER: The client denied the list, exiting.\n");
+			printf("SERVER: The client denied the list. Terminating connection with client.\n");
 			if(recoveryMode == 1) {goto endClientInteraction;}
 			close(new_s);
 			close(s);
@@ -190,7 +190,7 @@ int main(int argc, char *argv[]) {
 
 		//We can make the assumption that the client responded "y" from here because it wasn't "n" and client.c ensures valid input
 		if(createList() != 0) {//createList() returns 1 for errors
-			fprintf(stderr, "SERVER: Couldn't create/open the list. Terminating.\n");
+			fprintf(stderr, "SERVER: Couldn't create/open the list. Terminating connection with client.\n");
 			if(recoveryMode == 1) {goto endClientInteraction;}
 			close(new_s);
 			close(s);
@@ -200,7 +200,7 @@ int main(int argc, char *argv[]) {
 	    //Attempt to open newly create file with list
 	    int listFile = open("DirectoryList", O_RDWR);
 		if(listFile < 0) {//Verify we can open the file that contains our list of files in directory
-			fprintf(stderr, "SERVER: Error opening list file. Terminating.\n");
+			fprintf(stderr, "SERVER: Error opening list file. Terminating connection with client.\n");
 			send(new_s, "Unable to open file.", 20, 0);//Alert client to error
 			if(recoveryMode == 1) {goto endClientInteraction;}
 			close(new_s);
@@ -223,15 +223,13 @@ int main(int argc, char *argv[]) {
 		//Wait up to 60 seconds or forever if -NT is set for client to send us their filename choice
 		int timeoutVal = 0;
 		int gotRequest = 0;
-		if(noTimeOutMode == 0) {printf("SERVER: Waiting 1 minute for a response from client.\n");}
-		if(noTimeOutMode == 1) {printf("SERVER: Waiting for a response from client.\n");}	
+		noTimeOutMode == 0 ? printf("SERVER: Waiting 1 minute for a request response from client.\n") : printf("SERVER: Waiting for a request response from client.\n");
 		while(1) {
 			//If we're receiving anything on new_s within the next 10 seconds, recv() it and break out
 			if(isReceiving(new_s, readfds, 10, 0) == 1) {
 				memset(buf, 0, MAX_LINE);
 				recv(new_s, buf, MAX_LINE, 0);
-				if(debugMode == 1) {printf("SERVER: We received a request of a list '%s' from client\n\n", buf);}
-				if(debugMode == 0) {printf("SERVER: We received a request list from the client\n\n");}
+				debugMode == 0 ? printf("SERVER: We received a request list of '%s' from client\n\n", buf) : printf("SERVER: We received a request list from the client\n\n");
 				gotRequest = 1;
 				break;
 			}
@@ -239,7 +237,7 @@ int main(int argc, char *argv[]) {
 			//Otherwise, we increment the timeout value and alert the server appropriately
 			timeoutVal++;
 			if(noTimeOutMode == 0) {printf("SERVER: Client hasn't sent a filename yet. %i seconds remaining until client is dropped.\n", ((6-timeoutVal)*10));}
-			else if(noTimeOutMode == 1) {printf("SERVER: Client hasn't sent a filename yet. %i seconds have passed.\n", (timeoutVal*10));}
+			if(noTimeOutMode == 1) {printf("SERVER: Client hasn't sent a filename yet. %i seconds have passed.\n", (timeoutVal*10));}
 
 			//If the user didn't set NT and it's been 60 seconds, break out of loop
 			if(noTimeOutMode == 0 && timeoutVal == 6) {break;}
@@ -247,7 +245,7 @@ int main(int argc, char *argv[]) {
 		
 		//If we timed out of our 'get filename request' loop without getting a file name request
 		if(noTimeOutMode == 0 && gotRequest != 1) {
-			fprintf(stderr, "SERVER: We didn't receive a filename in alloted time, terminating.\n");
+			fprintf(stderr, "SERVER: We didn't receive a filename in alloted time. Terminating connection with client.\n");
 			if(recoveryMode == 1) {goto endClientInteraction;}
 			close(new_s);
 			close(s);
@@ -256,7 +254,7 @@ int main(int argc, char *argv[]) {
 
 		//Check to make sure we didn't receive an empty request list
 		if(atoi(buf) == 0) {
-			printf("SERVER: Client didn't select any files in their list. Terminating.\n");
+			printf("SERVER: Client didn't select any files in their list. Terminating connection with client.\n");
 			if(recoveryMode == 1) {goto endClientInteraction;}
 			close(new_s);
 			close(s);
@@ -281,7 +279,7 @@ int main(int argc, char *argv[]) {
 
 			//If we failed to open the requested file, send a bad response "n" to client
 			if(requestedFile < 0) {
-				fprintf(stderr, "SERVER: Error opening requested file. Terminating.\n");
+				fprintf(stderr, "SERVER: Error opening requested file. Terminating connection with client.\n");
 				send(new_s, "n", 1, 0);//Alert client to error
 				if(recoveryMode == 1) {goto endClientInteraction;}
 				close(new_s);
@@ -294,8 +292,7 @@ int main(int argc, char *argv[]) {
 			char serverMD5[MAX_LINE];//String to hold result of the server MD5 on the original file asked for
 			strcpy(md5Command, "md5sum ");//Prep the system() call string
 			strcat(md5Command, curFile);//Get the filename requested and put it into the command string
-			if(debugMode == 1) {strcat(md5Command, " | tee -a serverTemp");}//Append command to write result into temporary file and stdout
-			if(debugMode == 0) {strcat(md5Command, " > serverTemp 2> /dev/null");}//Append command to write result to temporary file and not stdout
+			debugMode == 0 ? strcat(md5Command, " > serverTemp 2> /dev/null") : strcat(md5Command, " | tee -a serverTemp");//Append to MD5 command so that it writes to file
 
 			//Check against all files in folder and see if the requested file matches one of them as a final security check
 			struct dirent* DirEntry;
@@ -312,7 +309,7 @@ int main(int argc, char *argv[]) {
 
 			//If we didn't find the file requested withing our current directory, alert client and terminate connection
 			if(gotFile != 1) {
-				fprintf(stderr, "SERVER: Error finding requested file '%s'. Terminating.\n", curFile);
+				fprintf(stderr, "SERVER: Error finding requested file '%s'. Terminating connection with client.\n", curFile);
 				send(new_s, "n", 1, 0);//Alert client to error
 				if(recoveryMode == 1) {goto endClientInteraction;}
 				close(new_s);
@@ -321,22 +318,20 @@ int main(int argc, char *argv[]) {
 			}
 
 			//We see the requested file is in our PWD and can open it, return a good response "y" to client and send the data afterwards
-			printf("SERVER: Sending file to client\n");
 			send(new_s, "y", 1, 0);
-			if(debugMode == 1) {printf("SERVER: - Start file -\n\n");}
+			if(printFileMode == 1) {printf("SERVER: - Start file -\n\n");}
 			int bytes = 0;
 			while((size = read(requestedFile, buf, MAX_SIZE)) != 0) {
 				buf[MAX_LINE - 1] = '\0';
 				send(new_s, buf, size, 0);
 				bytes += size;//Increment bytes by size of packet sent each time
-				if(debugMode == 1) {write(1, buf, size);}//Print contents of buf to stdout each run of read
+				if(printFileMode == 1) {write(1, buf, size);}//Print contents of buf to stdout each run of read
 			}
-			if(debugMode == 1) {printf("\n\nSERVER: - End file -\n");}
+			if(printFileMode == 1) {printf("\n\nSERVER: - End file -\n");}
 			printf("SERVER: Finished sending file to client. %i total bytes sent.\n", bytes);
 			close(requestedFile);
 
-			//We get the md5 of our file and save it for the next step
-			printf("SERVER: Grabbing the md5sum for our file");
+			//We get the MD5 of our file and save it for the next step
 			if(debugMode == 1) {printf("\n\n");}
 			int serverTemp = open("serverTemp", O_CREAT | O_RDWR | O_TRUNC, 0644);//Create a temporary file
 			system(md5Command);//Execute the md5sum on our file with output appended to our temporary file
@@ -348,7 +343,7 @@ int main(int argc, char *argv[]) {
 			remove("serverTemp");
 
 			//Now we receive the md5 the client got to check against it as a check
-			printf("\nSERVER: Waiting for the client's MD5 to check against ours\n");
+			printf("SERVER: Waiting for the client's MD5 to check against our local MD5\n");
 			while(1) {
 				if(isReceiving(new_s, readfds, 0, 500000) == 1) {//If we're receiving data from client on new_s
 					memset(buf, 0, MAX_LINE);
@@ -358,11 +353,11 @@ int main(int argc, char *argv[]) {
 					if(strcmp(buf, serverMD5) == 0) {
 						memset(buf, 0, MAX_LINE);
 						send(new_s, "y", 1, 0);
-						printf("SERVER: The client's md5 matched. Sending good response message and moving on...\n\n");
+						printf("SERVER: The client's MD5 matched. Sending good response message and moving on...\n\n");
 						break;
 					}
 					else {
-						fprintf(stderr, "SERVER: The client's md5 '%s' didn't match our '%s'. Sending error message and terminating.\n\n", buf, serverMD5);
+						fprintf(stderr, "SERVER: The client's MD5 '%s' didn't match our '%s'. Sending error message and terminating connection with client.\n\n", buf, serverMD5);
 						send(new_s, "n", 1, 0);
 						if(recoveryMode == 1) {goto endClientInteraction;}
 						close(new_s);
@@ -388,13 +383,14 @@ int main(int argc, char *argv[]) {
 				}
 				else if (strcmp(buf, "n") == 0 || strcmp(buf, "N") == 0) {
 					printf("SERVER: User terminated. Ending processes.\n");
+					close(new_s);
 					close(s);
 					return 0;
 				}
 				else {fprintf(stderr, "SERVER: Invalid input, please type 'y' for yes, or 'n' for no\n");}
 			}
 		}
-		if(stayUpMode == 1) {printf("\nSERVER: Restarting the server and listening for a connection on port '%s' for a new client.\n", SERVER_PORT);}
+		printf("\nSERVER: Restarting the server and listening for a connection on port '%s' for a new client.\n", SERVER_PORT);//Server would've just returned 0 by here, so it's safe to print this now
 	}
 	close(new_s);
 	close(s);

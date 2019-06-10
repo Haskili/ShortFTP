@@ -1,7 +1,7 @@
 # ShortFTP
 
 ## Overview
-ShortFTP is a basic FTP server/client that allows the client to look through a given list of files in the directory server is executed in, choose files from that list, and verify the validity of those files using an md5sum. It is made mainly for learning purposes.
+ShortFTP is a basic FTP server/client that allows the client to look through a given list of files in the directory server is executed in, choose files from that list, download them, and verify the validity of those downloaded files using an md5sum. It is made mainly for learning purposes.
 
 
 I started this project outside of school while in my first networking class only a few months ago when I was introduced to networking with C. At first, I was introduced to how two hosts communicate and thought it was exciting to see how that interaction worked. I designed this based off a project that was assigned in class which allowed for bare-bones (as in you actually had to know what file to ask for beforehand as the client and everything) file transfering between two hosts. Once I was done with that project, I started this one on my own, eager to see what I could do if I explored the concept a little bit further. The result is ShortFTP, which allows file-transfer between server/client using passwords, MD5 checks, and various other features. 
@@ -43,8 +43,7 @@ Options for the client are:
 
 
 ## Todo:
-* Alter printf() statements on errors that are recoverable in server.c to reflect if -SU is set and we can continue
+* Add a logfile feature to server.c which will log all interactions of server/client and will list IPs of connected clients
 * Consider changing the recovery mode process (using a goto). Make it such that the file transfer process is a function and based on that return value we can recover from an error depending on it's type
 * Consider adding a recovery mode for the client.c as well
 * Reduce/eliminate use of certain high-cost functions
-* Re-comment some of the items in the client.c and server.c such as lookup_and_connect()

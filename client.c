@@ -146,14 +146,14 @@ int main( int argc, char *argv[] ) {
 		else {fprintf(stderr, "CLIENT: Invalid input: '%s', please type 'y' for yes, or 'n' for no\n", buf);}//User is alerted to invalid input and we will continue until valid input
 	}
 
-	//Print the list of files received with clear indicators of start/stop 
-	printf("CLIENT: - Start list -\n\n");
+	//Print the list of files received
+	debugMode == 0 ? printf("\n") : printf("CLIENT: - Start list -\n\n");
 	while((len = recv(s, buf, MAX_LINE, 0))) {
 		write(1, buf, len);
 		memset(buf, 0, MAX_LINE);
 		if(isReceiving(s, readfds, 0, 500000) == 0) {break;}//If we're not receiving anymore information, break out of the loop and continue
 	}
-	printf("\nCLIENT: - End list -\n");
+	debugMode == 0 ? printf("\n") : printf("\nCLIENT: - End list -\n");
 
 	//Alert user to choose from up to 9 items from the list and set up for the user give input
 	if(serverTimeout == 1) {printf("CLIENT: The server has given us a minute till the timeout for choosing files.\n");}
@@ -268,12 +268,10 @@ int main( int argc, char *argv[] ) {
 		//Prepare the string for the system() MD5 command
 		strcpy(md5Command, "md5sum DF-");
 		strcat(md5Command, curFile);
-		if(debugMode == 1) {strcat(md5Command, " | tee -a clientTemp");}//Append command to write result into temporary file and stdout
-		if(debugMode == 0) {strcat(md5Command, " > clientTemp 2> /dev/null");}//Append command to write result into temporary file and not stdout
+		debugMode == 0 ? strcat(md5Command, " > clientTemp 2> /dev/null") : strcat(md5Command, " | tee -a clientTemp");//Append to MD5 command so that it writes to file
 
 		//Get the md5 of our downloaded file with system()
-		printf("CLIENT: Grabbing the md5sum of our downloaded file and checking with server");
-		if(debugMode == 1) {printf("\n\n");}
+		if(debugMode == 1) {printf("CLIENT: Grabbing the md5sum of our downloaded file and checking with server\n");}
 		int clientTemp = open("clientTemp", O_CREAT | O_RDWR | O_TRUNC, 0644);//Create a temporary file to hold our md5 result
 		system(md5Command);//Get the md5 for our downloaded file and store it in the temporary file
 		read(clientTemp, clientMD5, 32);//Read the MD5 from the file into our string
@@ -292,7 +290,7 @@ int main( int argc, char *argv[] ) {
 
 		//Check the status message and report it to the client before finally ending process
 		if(strcmp(buf, "y") == 0) {
-	    	printf("\nCLIENT: Good response from server for file MD5, confirmed that our file is valid. Moving on...\n\n");
+	    	printf("CLIENT: Good response from server for MD5 verification, confirmed that our file is valid. Moving on...\n\n");
 	    }
 	    else if(strcmp(buf, "n") == 0) {
 	    	fprintf(stderr, "\nCLIENT: Bad response from server to our MD5 of file '%s'. Terminating.\n", curFile);
