@@ -23,6 +23,7 @@ Options for the server are:
 * -NT Allows the client to take infinite time to respond with a file that they want once given the list
 * -SU Allows the server to designate they wish for the server to stay up and keep receiving new clients until they manually close the process
 * -RM Sets the server to recover after certain types of errors. Allows for better usage of -SU if the user wants to leave the server running without resetting on error.
+* -PF Tells the server to print the file as we read() it to stdout
 
 
 ### Client:
