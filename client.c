@@ -87,8 +87,6 @@ int main( int argc, char *argv[] ) {
 	char * password = argv[3];
     fd_set readfds;//Create a fileset for file descriptors
     FD_ZERO(&readfds);//Clear the fileset
-    char md5Command[MAX_LINE];//String that we will use for our system() call
-	char clientMD5[MAX_LINE];//String to hold result of client's MD5 on the downloaded files
 	char downloadFileStr[MAX_LINE];//String to hold the name of the file that we will create to write downloaded information into
 
     if(!argv[1] || !argv[2] || !argv[3]) {
@@ -265,35 +263,37 @@ int main( int argc, char *argv[] ) {
 		printf("CLIENT: Finished receiving file '%s' from server. %i bytes received\n", curFile, bytesReceived);
 		close(downloadFile);
 
-		//Prepare the string for the system() MD5 command
-		strcpy(md5Command, "md5sum DF-");
-		strcat(md5Command, curFile);
-		debugMode == 0 ? strcat(md5Command, " > clientTemp 2> /dev/null") : strcat(md5Command, " | tee -a clientTemp");//Append to MD5 command so that it writes to file
+		//Prepare the string for the system() sha1sum command
+		char commandStr[MAX_LINE];//String that we will use for our system() call
+		char clientCommandResult[MAX_LINE];//String to hold result of client's SHA1 on the downloaded files
+		strcpy(commandStr, "sha1sum DF-");
+		strcat(commandStr, curFile);//Append the command with the current file name
+		debugMode == 0 ? strcat(commandStr, " > clientTemp 2> /dev/null") : strcat(commandStr, " | tee -a clientTemp");//Append to sha1sum command so that it writes to file
 
-		//Get the md5 of our downloaded file with system()
-		if(debugMode == 1) {printf("CLIENT: Grabbing the md5sum of our downloaded file and checking with server\n");}
-		int clientTemp = open("clientTemp", O_CREAT | O_RDWR | O_TRUNC, 0644);//Create a temporary file to hold our md5 result
-		system(md5Command);//Get the md5 for our downloaded file and store it in the temporary file
-		read(clientTemp, clientMD5, 32);//Read the MD5 from the file into our string
-		clientMD5[32] = '\0';//Correct the string to only include the MD5 result, and not the end "file name" part that includes the file name that the function was called on
+		//Get the SHA1 of our downloaded file with system()
+		if(debugMode == 1) {printf("CLIENT: Creating the sha1sum of our downloaded file and checking with server\n");}
+		int clientTemp = open("clientTemp", O_CREAT | O_RDWR | O_TRUNC, 0644);//Create a temporary file to hold our SHA1
+		system(commandStr);//Get the SHA1 for our downloaded file and store it in the temporary file
+		read(clientTemp, clientCommandResult, 42);//Read the SHA1 from the file into our string
+		clientCommandResult[42] = '\0';//Correct the string to only include the sha1sum result, and not the end "file name" part that includes the file name that the function was called on
 		
-		//Close the temporary file and delete it now that we're finished creating the MD5 for that file
+		//Close the temporary file and delete it now that we're finished creating the SHA1 for that file
 		close(clientTemp);
 		remove("clientTemp");
 
-		//Send our resulting md5 to the server and wait for it's response
-		send(s, clientMD5, MAX_LINE, 0);
+		//Send our resulting SHA1 to the server and wait for it's response
+		send(s, clientCommandResult, MAX_LINE, 0);
 
-		//Receive the status of the md5 check from the server
+		//Receive the status of the SHA1 check from the server
 		memset(buf, 0, MAX_LINE);
 		if(isReceiving(s, readfds, 0, 500000) == 1) {recv(s, buf, 1, 0);}
 
 		//Check the status message and report it to the client before finally ending process
 		if(strcmp(buf, "y") == 0) {
-	    	printf("CLIENT: Good response from server for MD5 verification, confirmed that our file is valid. Moving on...\n\n");
+	    	printf("CLIENT: Good response from server for SHA1 verification, confirmed that our file is valid. Moving on...\n\n");
 	    }
 	    else if(strcmp(buf, "n") == 0) {
-	    	fprintf(stderr, "\nCLIENT: Bad response from server to our MD5 of file '%s'. Terminating.\n", curFile);
+	    	fprintf(stderr, "\nCLIENT: Bad response from server to our SHA1 of file '%s'. Terminating.\n", curFile);
 	    	close(s);
 	    	exit(1);
 	    }

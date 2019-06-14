@@ -24,6 +24,7 @@ Options for the server are:
 * -SU Allows the server to designate they wish for the server to stay up and keep receiving new clients until they manually close the process
 * -RM Sets the server to recover after certain types of errors. Allows for better usage of -SU if the user wants to leave the server running without resetting on error.
 * -PF Tells the server to print the file as we read() it to stdout
+* -LO Produces a unique log file for the server which records activity and has the timestamp of startup written in both the header of the file as well as the file name
 
 
 ### Client:
@@ -44,7 +45,8 @@ Options for the client are:
 
 
 ## Todo:
-* Add a logfile feature to server.c which will log all interactions of server/client and will list IPs of connected clients
+* Change logfile to have a subset of options (IE: allow option to record entire list of files sent or list IP of client regardless of default options selected)
+* Clean up comments in server.c
 * Consider changing the recovery mode process (using a goto). Make it such that the file transfer process is a function and based on that return value we can recover from an error depending on it's type
 * Consider adding a recovery mode for the client.c as well
 * Reduce/eliminate use of certain high-cost functions
