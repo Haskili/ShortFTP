@@ -10,12 +10,13 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <time.h>
+#include <openssl/sha.h>
 
 #define MAX_LINE 256
 #define MAX_PENDING 5
 #define MAX_SIZE 30
 
-int createList() {//Creates a file to store list of files in directory server is started, itself not included
+int createList() {//Creates a file to store list of files in directory server is started
 	struct dirent *DirEntry;
 	DIR *directory;
 	directory = opendir(".");
@@ -188,7 +189,7 @@ int main(int argc, char *argv[]) {
 		}
 
 		if(strcmp(buf, SERVER_PASSWORD) != 0 && noPassMode == 0) {//Verify the password given by client matches what's in argv[2]
-			fprintf(stderr, "SERVER: Bad password given, '%s'. Terminating connection with client.\n", buf);
+			fprintf(stderr, "SERVER: Bad password given, '%s', looking for '%s'. Terminating connection with client.\n", buf, SERVER_PASSWORD);
 			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: Bad password given, '%s'. Terminating connection with client.\n", buf); close(logFile);}
 			send(new_s, "BAD", 3, 0);
 			if(recoveryMode == 1) {goto endClientInteraction;}
@@ -333,13 +334,6 @@ int main(int argc, char *argv[]) {
 				exit(1);
 			}
 
-			//Now we can make the string for the system() call
-			char commandStr[MAX_LINE];//String that we will use for our system() call
-			char serverCommandResult[MAX_LINE];//String to hold result of the server SHA1 on the original file asked for
-			strcpy(commandStr, "sha1sum ");
-			strcat(commandStr, curFile);//Append the command string with our current file name
-			debugMode == 0 ? strcat(commandStr, " > serverTemp 2> /dev/null") : strcat(commandStr, " | tee -a serverTemp");//Append to sha1sum command so that it writes to file
-
 			//Check against all files in folder and see if the requested file matches one of them as a final security check
 			struct dirent* DirEntry;
 			DIR* directory;
@@ -364,31 +358,38 @@ int main(int argc, char *argv[]) {
 				exit(1);
 			}
 
-			//We see the requested file is in our PWD and can open it, return a good response "y" to client and send the data afterwards
+			//We see the requested file is in our PWD and can open it, return a good response "y" to client
 			send(new_s, "y", 1, 0);
+
+			//Build structure for the SHA1 and initalize it
+    		SHA_CTX ctx;
+    		SHA1_Init(&ctx);
+
+			//Send the data to the client as we read() it into buf
 			if(printFileMode == 1) {printf("SERVER: - Start file -\n\n");}
 			int bytes = 0;
 			while((size = read(requestedFile, buf, MAX_SIZE)) != 0) {
 				buf[MAX_LINE - 1] = '\0';
 				send(new_s, buf, size, 0);
+				SHA1_Update(&ctx, buf, size);//Update the SHA1 as buf keeps getting read() into
 				bytes += size;//Increment bytes by size of packet sent each time
-				if(printFileMode == 1) {write(1, buf, size);}//Print contents of buf to stdout each run of read
+				if(printFileMode == 1) {write(1, buf, size);}//Print contents of buf to stdout each run of read()
 			}
 			if(printFileMode == 1) {printf("\n\nSERVER: - End file -\n");}
 			printf("SERVER: Finished sending file to client. %i total bytes sent.\n", bytes);
+			if(debugMode == 1) {printf("\n\n");}
 			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: Finished sending file to client. %i total bytes sent.\n", bytes); close(logFile);}
 			close(requestedFile);
 
-			//We get the SHA1 of our file and save it for the next step
-			if(debugMode == 1) {printf("\n\n");}
-			int serverTemp = open("serverTemp", O_CREAT | O_RDWR | O_TRUNC, 0644);//Create a temporary file
-			system(commandStr);//Execute the sha1sum on our file with output appended to our temporary file
-			read(serverTemp, serverCommandResult, 42);//Read the result from the file in our string
-			serverCommandResult[42] = '\0';
-			
-			//Close the temporary file and delete it now that we're finished creating the SHA1 for that file
-			close(serverTemp);
-			remove("serverTemp");
+			//Build structure for the file hash and use SHA1_Final()
+			unsigned char fileHash[SHA_DIGEST_LENGTH];//Reminder: SHA_DIGEST_LENGTH = 20 bytes
+			SHA1_Final(fileHash, &ctx);
+
+			//Use sprintf() to put the file hash into a workable string
+			char serverSHA1[SHA_DIGEST_LENGTH*2];
+			for (int pos = 0; pos < SHA_DIGEST_LENGTH; pos++) {
+		        sprintf((char*)&(serverSHA1[pos*2]), "%02x", fileHash[pos]);
+		    }
 
 			//Now we receive the SHA1 the client got to check against it as a check
 			printf("SERVER: Waiting for the client's SHA1 to check against our local SHA1\n");
@@ -399,7 +400,7 @@ int main(int argc, char *argv[]) {
 					recv(new_s, buf, MAX_LINE, 0);
 
 					//Check if our file SHA1 is the same as client's
-					if(strcmp(buf, serverCommandResult) == 0) {
+					if(strcmp(buf, serverSHA1) == 0) {
 						memset(buf, 0, MAX_LINE);
 						send(new_s, "y", 1, 0);
 						printf("SERVER: The client's SHA1 matched. Sending good response message and moving on...\n\n");
@@ -407,8 +408,8 @@ int main(int argc, char *argv[]) {
 						break;
 					}
 					else {
-						fprintf(stderr, "SERVER: The client's SHA1 '%s' didn't match our SHA1 '%s'. Sending error message and terminating connection with client.\n\n", buf, serverCommandResult);
-						if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: The client's SHA1 '%s' didn't match our SHA1 '%s'. Sending error message and terminating connection with client.\n\n", buf, serverCommandResult); close(logFile);}
+						fprintf(stderr, "SERVER: The client's SHA1 '%s' didn't match our SHA1 '%s'. Sending error message and terminating connection with client.\n\n", buf, serverSHA1);
+						if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: The client's SHA1 '%s' didn't match our SHA1 '%s'. Sending error message and terminating connection with client.\n\n", buf, serverSHA1); close(logFile);}
 						send(new_s, "n", 1, 0);
 						if(recoveryMode == 1) {goto endClientInteraction;}
 						close(new_s);

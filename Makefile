@@ -4,10 +4,10 @@ CFLAGS = -Wall
 all: $(EXE)
 
 client: client.c
-	gcc -Wall client.c -o client
+	gcc client.c -Wall -lcrypto -o client
 
 server: server.c
-	gcc -Wall server.c -o server
+	gcc server.c -Wall -lcrypto -o server
 
 clean:
 	rm -f $(EXE)

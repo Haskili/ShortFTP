@@ -6,12 +6,13 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <openssl/sha.h>
 
 #define MAX_LINE 256
 #define MAX_SIZE 30
 
 int verifyPassword(int s, const char * password, char * buf) {//Used to send() a given password through a given sockfd and recv() the response
-	send(s, password, 15, 0);//Send the password to server
+	send(s, password, MAX_LINE, 0);//Send the password to server
 
     //Setup for receiving the response from server
     memset(buf, 0, MAX_LINE);
@@ -130,12 +131,12 @@ int main( int argc, char *argv[] ) {
 		fgets(buf, MAX_LINE, stdin);
 		buf[1] = '\0';//Correction for new line on fgets getting filename
 		if(strcmp(buf, "y") == 0 || strcmp(buf, "Y") == 0) {
-			send(s, buf, strlen(buf), 0);//Tell server to send the list
+			send(s, buf, 1, 0);//Tell server to send the list
 			memset(buf, 0, MAX_LINE);//Reset buffer
 			break;
 		}
 		else if (strcmp(buf, "n") == 0 || strcmp(buf, "N") == 0) {
-			send(s, buf, strlen(buf), 0);//Tell the server to not send the list
+			send(s, buf, 1, 0);//Tell the server to not send the list
 			memset(buf, 0, MAX_LINE);
 			close(s);
 			fprintf(stderr, "CLIENT: Told server not to send list, terminating\n");
@@ -218,7 +219,7 @@ int main( int argc, char *argv[] ) {
 
 	//Send the file request list to the server
 	printf("CLIENT: We requested %i files from the server, waiting for server response...\n\n", atoi(fileList));
-	send(s, fileList, MAX_LINE, 0);//Send filename list
+	send(s, fileList, MAX_LINE, 0);//Send filename list - Capped list size of character number "MAX_LINE" (256)
 
 	//Setup the structures for file names for the next part
 	char *ptr = strtok(fileList, ";;");
@@ -251,9 +252,14 @@ int main( int argc, char *argv[] ) {
 		int downloadFile = open(downloadFileStr, O_CREAT | O_WRONLY | O_TRUNC, 0644);//Open file we're going to write our information into
 		int bytesReceived = 0;
 		
+		//Build SHA1 structure and initialize
+		SHA_CTX ctx;
+    	SHA1_Init(&ctx);
+
 		//Begin to recv() the file from server
 		while((len = recv(s, buf, MAX_LINE, 0))) {
 			write(downloadFile, buf, len);
+			SHA1_Update(&ctx, buf, len);//Update the SHA1 as buf keeps getting read() into
 			if(printFileMode == 1) {write(1, buf, len);}//Write file to terminal in debug mode as we recv() it
 			bytesReceived += len; 
 			memset(buf, 0, MAX_LINE);
@@ -263,28 +269,18 @@ int main( int argc, char *argv[] ) {
 		printf("CLIENT: Finished receiving file '%s' from server. %i bytes received\n", curFile, bytesReceived);
 		close(downloadFile);
 
-		//Prepare the string for the system() sha1sum command
-		char commandStr[MAX_LINE];//String that we will use for our system() call
-		char clientCommandResult[MAX_LINE];//String to hold result of client's SHA1 on the downloaded files
-		strcpy(commandStr, "sha1sum DF-");
-		strcat(commandStr, curFile);//Append the command with the current file name
-		debugMode == 0 ? strcat(commandStr, " > clientTemp 2> /dev/null") : strcat(commandStr, " | tee -a clientTemp");//Append to sha1sum command so that it writes to file
+		//Build structure for the hash and use SHA1_Final() to end
+		unsigned char fileHash[SHA_DIGEST_LENGTH];//Reminder: SHA_DIGEST_LENGTH = 20 bytes
+		SHA1_Final(fileHash, &ctx);
 
-		//Get the SHA1 of our downloaded file with system()
-		if(debugMode == 1) {printf("CLIENT: Creating the sha1sum of our downloaded file and checking with server\n");}
-		int clientTemp = open("clientTemp", O_CREAT | O_RDWR | O_TRUNC, 0644);//Create a temporary file to hold our SHA1
-		system(commandStr);//Get the SHA1 for our downloaded file and store it in the temporary file
-		read(clientTemp, clientCommandResult, 42);//Read the SHA1 from the file into our string
-		clientCommandResult[42] = '\0';//Correct the string to only include the sha1sum result, and not the end "file name" part that includes the file name that the function was called on
-		
-		//Close the temporary file and delete it now that we're finished creating the SHA1 for that file
-		close(clientTemp);
-		remove("clientTemp");
+		//We need to make hash into a workable string
+		char clientSHA1[SHA_DIGEST_LENGTH*2];
+		for (int pos = 0; pos < SHA_DIGEST_LENGTH; pos++) {
+	        sprintf((char*)&(clientSHA1[pos*2]), "%02x", fileHash[pos]);
+	    }
 
-		//Send our resulting SHA1 to the server and wait for it's response
-		send(s, clientCommandResult, MAX_LINE, 0);
-
-		//Receive the status of the SHA1 check from the server
+		//Send out SHA1 of the downloaded file and wait for the server's response for verification
+		send(s, clientSHA1, MAX_LINE, 0);
 		memset(buf, 0, MAX_LINE);
 		if(isReceiving(s, readfds, 0, 500000) == 1) {recv(s, buf, 1, 0);}
 
