@@ -9,7 +9,7 @@
 #include <openssl/sha.h>
 
 #define MAX_LINE 256
-#define MAX_SIZE 30
+#define MAX_SIZE 150
 
 int verifyPassword(int s, const char * password, char * buf) {//Used to send() a given password through a given sockfd and recv() the response
 	send(s, password, MAX_LINE, 0);//Send the password to server
@@ -124,7 +124,7 @@ int main( int argc, char *argv[] ) {
     int serverTimeout = 1;
     if(strcmp(buf, "VALID-NT") == 0) {serverTimeout = 0;}
 
-    //Return response to server on whether we want to receive the list of files available
+    //Return response to server on whether user wants to receive the list of files available
 	printf("CLIENT: List available from host with address '%s'\nCLIENT: Are you certain you want to download the list from this host? (yes = y, no = n)\n", argv[1]);
 	while(1) {
 		memset(buf, 0, MAX_LINE);
@@ -252,6 +252,11 @@ int main( int argc, char *argv[] ) {
 		int downloadFile = open(downloadFileStr, O_CREAT | O_WRONLY | O_TRUNC, 0644);//Open file we're going to write our information into
 		int bytesReceived = 0;
 		
+		/* At this point we recv() the current file in the list piece by piece into a buffer and write()
+		it into a file as we get it, updating our SHA1 of this file along the way. After each download is 
+		complete, we get the completed SHA1 of the downloaded file and send it to server to verify that 
+		we received the file correctly. */ 
+
 		//Build SHA1 structure and initialize
 		SHA_CTX ctx;
     	SHA1_Init(&ctx);

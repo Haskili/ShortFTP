@@ -14,7 +14,7 @@
 
 #define MAX_LINE 256
 #define MAX_PENDING 5
-#define MAX_SIZE 30
+#define MAX_SIZE 150
 
 int createList() {//Creates a file to store list of files in directory server is started
 	struct dirent *DirEntry;
@@ -165,7 +165,7 @@ int main(int argc, char *argv[]) {
 		close(logFile);
 	}
 
-	//Wait for connection
+	//Go into the main loop that waits for a potential client, this loop will allow us to receive multiple clients (one at a time)
 	while (1) {
 	    //Try to accept a potential client on new_s
 		if((new_s = accept(s, (struct sockaddr *)&clientAddr, &clientAddrSize)) < 0) {
@@ -175,19 +175,24 @@ int main(int argc, char *argv[]) {
 		}
 
 	    //Print appropriate message for finding a potential client
+	    getpeername(new_s, (struct sockaddr *)&clientAddr, &clientAddrSize);//Get the adress of the client trying to connect to server
 	    if(debugMode == 1) {
-	    	getpeername(new_s, (struct sockaddr *)&clientAddr, &clientAddrSize);//Might need to switch to getsockname() in future
-	    	printf("SERVER: We found a potential client with address of '%s'\n", inet_ntoa(clientAddr.sin_addr));
+	    	time_t timeNow = time(NULL);
+	    	printf("SERVER: We found a potential client with address of '%s' - %s", inet_ntoa(clientAddr.sin_addr), ctime(&timeNow));//NOTE - No need for \n newline here because ctime() will make a newline
+	    	if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: We found a potential client with address of '%s'\n - %s", inet_ntoa(clientAddr.sin_addr), ctime(&timeNow)); close(logFile);}
+	    }
+	    else {
+	    	printf("SERVER: We found a potential client with address of '%s'\n", inet_ntoa(clientAddr.sin_addr)); 
 	    	if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: We found a potential client with address of '%s'\n", inet_ntoa(clientAddr.sin_addr)); close(logFile);}
 	    }
-	    else {printf("SERVER: We found a potential client\n"); if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: We found a potential client\n"); close(logFile);}}
 
-		//Grab the password from the client (assuming it is sending it correctly upon connection)
+		//Grab the password from the client
 		if(isReceiving(new_s, readfds, 0, 500000) == 1) {
 			memset(buf, 0, MAX_LINE);
 			recv(new_s, buf, MAX_LINE, 0);
 		}
 
+		//Verify the password we got from client
 		if(strcmp(buf, SERVER_PASSWORD) != 0 && noPassMode == 0) {//Verify the password given by client matches what's in argv[2]
 			fprintf(stderr, "SERVER: Bad password given, '%s', looking for '%s'. Terminating connection with client.\n", buf, SERVER_PASSWORD);
 			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: Bad password given, '%s'. Terminating connection with client.\n", buf); close(logFile);}
@@ -207,8 +212,8 @@ int main(int argc, char *argv[]) {
         memset(buf, 0, MAX_LINE);
 		recv(new_s, buf, 1, 0);
 
-		//If the client didn't want the list
-		if(strcmp(buf, "n") == 0) {
+		//Alert the Server to the response from client
+		if(strcmp(buf, "n") == 0) {//Responded 'no'
 			printf("SERVER: The client denied the list. Terminating connection with client.\n");
 			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: The client denied the list. Terminating connection with client.\n"); close(logFile);}
 			if(recoveryMode == 1) {goto endClientInteraction;}
@@ -216,8 +221,20 @@ int main(int argc, char *argv[]) {
 			close(s);
 			return 0;
 		}
+		else if(strcmp(buf, "y") == 0) {//Responded 'yes'
+			printf("SERVER: The client accepted the list, sending the file name list\n");
+			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: The client accepted the list, sending the file name list\n"); close(logFile);}
+		}
+		else {//Response was invalid - likely premature termination from client
+			printf("SERVER: The client responded with invalid input. They likely ended the process prematurely. Terminating connection with client.\n");
+			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: The client responded with invalid input. They likely ended the process prematurely. Terminating connection with client.\n"); close(logFile);}
+			if(recoveryMode == 1) {goto endClientInteraction;}
+			close(new_s);
+			close(s);
+			exit(1);
+		}
 
-		//We can make the assumption that the client responded "y" from here because it wasn't "n" and client.c ensures valid input
+		//We can make the assumption that the client responded "y" from here, so we create the list
 		if(createList() != 0) {//createList() returns 1 for errors
 			fprintf(stderr, "SERVER: Couldn't create/open the list. Terminating connection with client.\n");
 			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: Couldn't create/open the list. Terminating connection with client.\n"); close(logFile);}
@@ -230,7 +247,7 @@ int main(int argc, char *argv[]) {
 	    //Attempt to open newly create file with list
 	    int listFile = open("DirectoryList", O_RDWR);
 		if(listFile < 0) {//Verify we can open the file that contains our list of files in directory
-			fprintf(stderr, "SERVER: Error opening list file. Terminating connection with client.\n");
+			fprintf(stderr, "SERVER: Error opening list file after creating it. Terminating connection with client.\n");
 			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: Error opening list file. Terminating connection with client.\n"); close(logFile);}
 			send(new_s, "Unable to open file.", 20, 0);//Alert client to error
 			if(recoveryMode == 1) {goto endClientInteraction;}
@@ -239,9 +256,7 @@ int main(int argc, char *argv[]) {
 			exit(1);
 		}
 
-	    //Send list of file names to the client
-		printf("SERVER: The client accepted the list, sending the file name list\n");
-		if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: The client accepted the list, sending the file name list\n"); close(logFile);}
+	    //Send list of file names to the client so they can choose from that list
 		if(debugMode == 1) {printf("SERVER: - Start list -\n\n");}
 		while((size = read(listFile, buf, MAX_SIZE)) != 0) {
 			buf[MAX_LINE - 1] = '\0';
@@ -250,7 +265,7 @@ int main(int argc, char *argv[]) {
 		}
 		if(debugMode == 1) {printf("\nSERVER: - End list -\n");}
 		close(listFile);
-		remove("DirectoryList");
+		remove("DirectoryList");//Remove the the list of files we just sent to client, now that it's not needed anymore
 
 		//Wait up to 60 seconds or forever if -NT is set for client to send us their filename choice
 		int timeoutVal = 0;
@@ -361,11 +376,16 @@ int main(int argc, char *argv[]) {
 			//We see the requested file is in our PWD and can open it, return a good response "y" to client
 			send(new_s, "y", 1, 0);
 
+			/* From here we need to read() the current file in the list that the client requested into
+			a buffer piece by piece, send() that buffer which contains the file data, update the SHA1 
+			of the file we have as we read() it for later verification, and then verify the SHA1 of 
+			the client's file that they downloaded matches what we have for our original file. */
+
 			//Build structure for the SHA1 and initalize it
     		SHA_CTX ctx;
     		SHA1_Init(&ctx);
 
-			//Send the data to the client as we read() it into buf
+			//Send the file data to the client as we read() it into buf
 			if(printFileMode == 1) {printf("SERVER: - Start file -\n\n");}
 			int bytes = 0;
 			while((size = read(requestedFile, buf, MAX_SIZE)) != 0) {
@@ -377,7 +397,7 @@ int main(int argc, char *argv[]) {
 			}
 			if(printFileMode == 1) {printf("\n\nSERVER: - End file -\n");}
 			printf("SERVER: Finished sending file to client. %i total bytes sent.\n", bytes);
-			if(debugMode == 1) {printf("\n\n");}
+			if(printFileMode == 1) {printf("\n\n");}
 			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: Finished sending file to client. %i total bytes sent.\n", bytes); close(logFile);}
 			close(requestedFile);
 
