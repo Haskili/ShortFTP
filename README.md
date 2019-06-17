@@ -1,7 +1,7 @@
 # ShortFTP
 
 ## Overview
-ShortFTP is a basic FTP server/client that allows the client to look through a given list of files in the directory server is executed in, choose files from that list, download them, and verify the validity of those downloaded files using an md5sum. It is made mainly for learning purposes.
+ShortFTP is a basic FTP server/client that allows the client to look through a given list of files in the directory server is executed in, choose files from that list, download them, and verify the validity of those downloaded files. It is made mainly for learning purposes.
 
 
 I started this project outside of school while in my first networking class last semester (Spring 2019) when I was introduced to C. At first, I was shown in detail how two hosts communicate and thought it was exciting to see how that interaction that brought two completely different hosts together worked. I designed ShortFTP based off a project that was assigned in class which allowed for bare-bones (as in you actually had to know what file to ask for beforehand as the client type of "bare") file transfering between two hosts. Once I was done with that project I started this one on my own, eager to see what I could do if I explored the concept a little bit further. The result is ShortFTP, which allows file-transfer between Server/Client using passwords, SHA1 checks, and various other features. 
