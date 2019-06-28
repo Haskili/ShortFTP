@@ -11,4 +11,3 @@ server: server.c
 
 clean:
 	rm -f $(EXE)
-

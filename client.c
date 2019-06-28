@@ -107,7 +107,7 @@ int main( int argc, char *argv[] ) {
 	}
 
 	//Lookup IP and connect to server
-	if ((s = lookup_and_connect(host, SERVER_PORT)) < 0) {
+	if((s = lookup_and_connect(host, SERVER_PORT)) < 0) {
 		exit(1);
 	}
 	FD_SET(s, &readfds);//Add s to list of sockets
@@ -156,48 +156,27 @@ int main( int argc, char *argv[] ) {
 
 	//Alert user to choose from up to 9 items from the list and set up for the user give input
 	if(serverTimeout == 1) {printf("CLIENT: The server has given us a minute till the timeout for choosing files.\n");}
-	printf("CLIENT: Please choose up to 9 files from the list above and finish by entering a ';;' or an empty line.\n\n");
+	printf("CLIENT: Please choose up to 10 files from the list above and finish by entering a ';;' or an empty line.\n\n");
 	char fileList[MAX_LINE];
-	fileList[0] = '0';
+	memset(fileList, 0, MAX_LINE);
 	int counter = 0;
 	int fileReqAmount = 0;
 	fd_set waitFDS;
 	
 	//Get the filenames the users wants
 	while(1) {
-		//Clear the fdset
-		FD_ZERO(&waitFDS);
-		FD_SET(0, &waitFDS);
-
-		//Reset the timevalues used for select() wait time
-		struct timeval tv;
-		tv.tv_sec = 1;
-		tv.tv_usec = 0;
-
 		//Get input on activity in stdin
-		if(select(1, &waitFDS, NULL, NULL, &tv) > 0) {
+		if(isReceiving(0, waitFDS, 1, 0) == 1) {//Use isReceiving() to get activity if it appears on stdin (0 in this case)
 			memset(buf, 0, MAX_LINE);
 			fgets(buf, MAX_LINE, stdin);
 			buf[strlen(buf) - 1] = '\0';//Correction for new line on fgets getting input
-			if(strcmp(buf, ";;") == 0 || strcmp(buf, "") == 0) {
-				memset(buf, 0, MAX_LINE);//Reset buffer
-				break;
-			}
-			//Increment the count of files we're requesting since we know user entered a name
+			
+			//First we check if we got the command to break out of the loop
+			if(strcmp(buf, ";;") == 0 || strcmp(buf, "") == 0) {memset(buf, 0, MAX_LINE);break;}//We reset our buffer and break out
+
+			//Increment the count of files we're requesting and append the list with the deliminator as well as the new file name
 			fileReqAmount++;
-
-			//Append the list with the new file and the preliminary separator
-			strcat(fileList, ";;");
-			strcat(fileList, buf);
-
-			//Copy list of files into buf temporarily
-			strcpy(buf, fileList + 1);//Copy only the files of fileList into buf
-
-			//Set the files requested counter in string
-			sprintf(fileList, "%i", fileReqAmount);
-
-			//Put the list being held by buf back into the fileList string and print it
-			strcat(fileList, buf);
+			sprintf(fileList + strlen(fileList), ";;%s", buf);
 		}
 
 		//Increment counter for the seconds in the input loop and check if we need to exit()
@@ -207,26 +186,58 @@ int main( int argc, char *argv[] ) {
 			close(s);
 			exit(1);
 		}
-		if(fileReqAmount == 9) {break;}//This denotes the maximum files allowed to request
+		if(fileReqAmount == 10 || strlen(fileList) > (MAX_LINE - 11)) {break;}//This denotes the maximum files allowed to request (and a check for file list length for send() size issues)
+	}
+
+	//Before we send the list to the server, we have to check that it meets the length requirements for our send() usage and reduce it if needed
+	if(strlen(fileList) > (MAX_LINE - 11)) {//(MAX_LINE - 11) (245) is our capacity for our list length
+		printf("CLIENT: List was too long, we need to first reduce the list given before sending...\n");
+		
+		//Build variables and reset buf so it can hold the reduced list
+		int totItems = 0;
+		char *ptr = strtok(fileList, ";;");
+		memset(buf, 0, MAX_LINE);
+
+		//Reduce the list as needed (CAPPED AT (245) CHARACTERS)
+		for(int len = strlen(ptr) + 3; len <= (MAX_LINE - 11); len += strlen(ptr) + (snprintf( NULL, 0, "%d", (totItems + 1))) + 2) {
+			//Append the buffer with the item and it's preceding deliminator
+			strcat(buf, ";;");
+			strcat(buf, ptr);
+			
+			//Increment our values
+			ptr = strtok(NULL, ";;");
+			totItems++;
+		}
+
+		//Remake buf and fileList by putting the correct number of items in front followed by the reduced list
+		memset(fileList, 0, MAX_LINE);
+		sprintf(fileList, "%i", totItems);
+		strcat(fileList, buf);
+		memset(buf, 0, MAX_LINE);
+		strcpy(buf, fileList);
 	}
 	
+	//If we didn't need to reduce the list, set up the buf and fileList so they contain the requested file amount followed by the list of files itself
+	else {snprintf(buf, (MAX_LINE + 3), "%i%s", fileReqAmount, fileList);memset(fileList, 0, MAX_LINE);strcpy(fileList, buf);}//The MAX_LINE + 3 would cause issues if we didn't reduce beforehand
+
 	//Check that client asked for at least one file
-	if(atoi(fileList) == 0 || fileReqAmount == 0) {//Added in additional condition for safety reasons
+	if(atoi(buf) == 0) {
 		fprintf(stderr, "CLIENT: You didn't select any files from the list to download. Alerting server and exiting.\n");
 		close(s);
 		exit(1);
 	}
 
 	//Send the file request list to the server
-	printf("CLIENT: We requested %i files from the server, waiting for server response...\n\n", atoi(fileList));
-	send(s, fileList, MAX_LINE, 0);//Send filename list - Capped list size of character number "MAX_LINE" (256)
+	if(debugMode == 0) {printf("CLIENT: We requested %i file(s) from the server, waiting for server response...\n\n", atoi(buf));}
+	else {printf("CLIENT: We requested %i file(s) from the server. Our list was '%s' and was %li in length\nCLIENT: Waiting for server response...\n\n", atoi(buf), buf, strlen(buf));}
+	send(s, buf, MAX_LINE, 0);//Send file name list
 
 	//Setup the structures for file names for the next part
 	char *ptr = strtok(fileList, ";;");
 	char curFile[MAX_LINE];
 	ptr = strtok(NULL, ";;");
 
-	//Receive each file from server by going into a loop an amount of times equal to # of files we requested
+	//Go through the file receiving process for each one of the files in list we sent (Receive file verification -> Receive file -> Send file SHA1 -> Receive SHA1 verification)
 	int rqstAmnt = atoi(fileList);
 	for(int i = 0; i < rqstAmnt; i++) {
 		//Grab the current file that we should be receiving from the fileList
@@ -239,7 +250,7 @@ int main( int argc, char *argv[] ) {
 
 		//If we got an bad or an invalid response from server
 		if(strcmp(buf, "y") != 0) {
-			fprintf(stderr, "CLIENT: We received an invalid or bad response from the server for our request of file '%s'. Terminating.\n", curFile);
+			fprintf(stderr, "CLIENT: We received a %s response from the server for our request of file '%s'. Terminating.\n", (strcmp(buf, "n") == 0 ? "bad" : "invalid"), curFile);
 			close(s);
 			exit(1);
 		}
@@ -251,11 +262,6 @@ int main( int argc, char *argv[] ) {
 		strcat(downloadFileStr, curFile);
 		int downloadFile = open(downloadFileStr, O_CREAT | O_WRONLY | O_TRUNC, 0644);//Open file we're going to write our information into
 		int bytesReceived = 0;
-		
-		/* At this point we recv() the current file in the list piece by piece into a buffer and write()
-		it into a file as we get it, updating our SHA1 of this file along the way. After each download is 
-		complete, we get the completed SHA1 of the downloaded file and send it to server to verify that 
-		we received the file correctly. */ 
 
 		//Build SHA1 structure and initialize
 		SHA_CTX ctx;

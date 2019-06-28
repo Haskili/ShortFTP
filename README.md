@@ -31,7 +31,7 @@ Options for the server are:
 `(Server Address) (Server Port) (Password) (Options)`
 
 Options for the client are:
-* -D turns on debugging, which prints more information to terminal such as the MD5 as it's created
+* -D turns on debugging, which prints more information to terminal such as the SHA1 as it's created
 * -PF allows the client to see the file in terminal as it's received
 
 
@@ -47,6 +47,5 @@ Options for the client are:
 ## Todo:
 * Consider developing a fork with GUI using GTK
 * Change logfile to have a subset of options (IE: allow option to record entire list of files sent or list IP of client regardless of default options selected)
-* Consider changing the recovery mode process (using a goto). Make it such that the file transfer process is a function and based on that return value we can recover from an error depending on it's type
 * Consider adding a recovery mode for the client.c as well
-* Look into remaking transfer process for client.c/server.c by making the file request list a linked list instead of a C-string with tokens if it's more efficient
+* Reconsider file-check process during file transfer in server.c where the Server verifies first that the file is located in PWD

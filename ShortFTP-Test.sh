@@ -57,4 +57,5 @@ if [ "$getValid" == "CLIENT: Good response from server for SHA1 verification, co
 else
 	echo "Failure. Please check the clientOutputFile.out for more information"
 fi
-rm tempTransferTestFile
+rm tempTransferTestFile 2> /dev/null
+rm DF-tempTransferTestFile 2> /dev/null

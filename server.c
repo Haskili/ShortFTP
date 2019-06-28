@@ -11,6 +11,7 @@
 #include <netinet/in.h>
 #include <time.h>
 #include <openssl/sha.h>
+#include <stdarg.h>
 
 #define MAX_LINE 256
 #define MAX_PENDING 5
@@ -50,6 +51,30 @@ int makeLogFile(char *logFileName) {//Create a unique file to log events with a 
     dprintf(logFile, "------------------------\n%s------------------------\n\n", ctime(&timeNow));//Attach header to the top of the log file
     close(logFile);
     return logFile;
+}
+
+int varPrint(int logOutputMode, char *logFileName, int isError, const char *format, ...) {//Uses vfprintf() to take care of writing conditionally to stdout, stderr, and a log file
+  va_list args;
+  va_start(args, format);
+
+  //First we print the message to the appropriate output given arguements
+  int len = vfprintf((isError == 0 ? stdout : stderr), format, args);
+
+  //Then take care of logging it to file if we need to
+  if(logOutputMode == 1) {
+    FILE *logFile = fopen(logFileName, "a");//Opens the file based on name
+    if(logFile == NULL) {
+    	fclose(logFile);
+    	va_end(args);
+    	fprintf(stderr, "SERVER: Error, couldn't write event to log file. Continuing...");
+    	return -1;
+    }
+    va_start(args, format);
+    vfprintf(logFile, format, args);
+    fclose(logFile);
+  }
+  va_end(args);
+  return len;//Returns the amount of characters printed (including null-terminator), similar to printf() which it emulates
 }
 
 int bind_and_listen(const char *service) {//Look at a particular port given and listen on that port for a client
@@ -120,7 +145,7 @@ int main(int argc, char *argv[]) {
     struct sockaddr_in clientAddr;//Holds our client address
 	socklen_t clientAddrSize = sizeof(struct sockaddr_in);
 	fd_set readfds;//Create a structure to hold file descriptors
-    FD_ZERO(& readfds);//Reset the file set
+    FD_ZERO(&readfds);//Reset the file set
 
     if(!argv[1] || !argv[2]) {//Check that port and password are given by user
     	fprintf(stderr, "SERVER: Incorrect arguments,\nUSAGE: PORT#, PASSWORD, -[OPTIONS]\n");
@@ -128,13 +153,7 @@ int main(int argc, char *argv[]) {
     }
 
 	//Get all the options asked for, if any - Makes sure options can be selected in any order
-	int debugMode = 0;
-	int noPassMode = 0; 
-	int noTimeOutMode = 0; 
-	int stayUpMode = 0;
-	int recoveryMode = 0;
-	int printFileMode = 0;
-	int logOutputMode = 0;
+	int debugMode = 0; int noPassMode = 0; int noTimeOutMode = 0; int stayUpMode = 0; int recoveryMode = 0; int printFileMode = 0; int logOutputMode = 0;
 	if(argc != 3) {
 		for(int i = 3; i < argc; i++) {
 			if(strcmp(argv[i], "-D") == 0) {debugMode = 1;}//Debug mode for more verbose printing during process
@@ -150,22 +169,19 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+	//Create a log file
+	char logFileName[37];//Holds name of log file, used throughout entire process for accessing log
+	if(logOutputMode == 1) {
+		printf("SERVER: Logfile '%s' %s\n", logFileName, makeLogFile(logFileName) > 0 ? "opened. Writing activity to the file.\n" : "couldn't be opened, continuing.\n");
+	}
+
 	//Bind socket to local interface and passive open
 	if((s = bind_and_listen(SERVER_PORT)) < 0) {
 		exit(1);
 	}
-	printf("SERVER: Starting server on port '%s'.\n", SERVER_PORT);
+	if(varPrint(logOutputMode, logFileName, 0, "SERVER: Starting server on port '%s'.\n", SERVER_PORT) == -1) {fprintf(stderr, "SERVER: Error with log file. Please check output.\n");}
 
-	//Create a log file
-	char logFileName[37];//Holds name of log file, used throughout entire process for accessing log
-	if(logOutputMode == 1) {
-		printf("SERVER: Logfile '%s' %s\n", logFileName, makeLogFile(logFileName) > 0 ? "opened. Writing activity to the file.\n" : "couldn't be opened. Continuing.\n");
-		int logFile = open(logFileName, O_RDWR | O_APPEND); 
-		dprintf(logFile, "SERVER: Starting server on port '%s'.\n", SERVER_PORT); 
-		close(logFile);
-	}
-
-	//Go into the main loop that waits for a potential client, this loop will allow us to receive multiple clients (one at a time)
+	//Go into the main loop that waits for a potential client, this loop will allow us to receive multiple clients consecutively
 	while (1) {
 	    //Try to accept a potential client on new_s
 		if((new_s = accept(s, (struct sockaddr *)&clientAddr, &clientAddrSize)) < 0) {
@@ -178,13 +194,9 @@ int main(int argc, char *argv[]) {
 	    getpeername(new_s, (struct sockaddr *)&clientAddr, &clientAddrSize);//Get the adress of the client trying to connect to server
 	    if(debugMode == 1) {
 	    	time_t timeNow = time(NULL);
-	    	printf("SERVER: We found a potential client with address of '%s' - %s", inet_ntoa(clientAddr.sin_addr), ctime(&timeNow));//NOTE - No need for \n newline here because ctime() will make a newline
-	    	if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: We found a potential client with address of '%s'\n - %s", inet_ntoa(clientAddr.sin_addr), ctime(&timeNow)); close(logFile);}
-	    }
-	    else {
-	    	printf("SERVER: We found a potential client with address of '%s'\n", inet_ntoa(clientAddr.sin_addr)); 
-	    	if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: We found a potential client with address of '%s'\n", inet_ntoa(clientAddr.sin_addr)); close(logFile);}
-	    }
+	    	varPrint(logOutputMode, logFileName, 0, "SERVER: We found a potential client with address of '%s' - %s", inet_ntoa(clientAddr.sin_addr), ctime(&timeNow));
+	    } 
+	    else {varPrint(logOutputMode, logFileName, 0, "SERVER: We found a potential client with address of '%s'\n", inet_ntoa(clientAddr.sin_addr));}
 
 		//Grab the password from the client
 		if(isReceiving(new_s, readfds, 0, 500000) == 1) {
@@ -194,18 +206,16 @@ int main(int argc, char *argv[]) {
 
 		//Verify the password we got from client
 		if(strcmp(buf, SERVER_PASSWORD) != 0 && noPassMode == 0) {//Verify the password given by client matches what's in argv[2]
-			fprintf(stderr, "SERVER: Bad password given, '%s', looking for '%s'. Terminating connection with client.\n", buf, SERVER_PASSWORD);
-			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: Bad password given, '%s'. Terminating connection with client.\n", buf); close(logFile);}
+			varPrint(logOutputMode, logFileName, 0, "SERVER: Bad password given, '%s', looking for '%s'. Terminating connection with client.\n", buf, SERVER_PASSWORD);
 			send(new_s, "BAD", 3, 0);
 			if(recoveryMode == 1) {goto endClientInteraction;}
 			close(new_s);
 			close(s);
-			exit(1);
+			return 0;
 		}
 
 		//Alert server of good password as well as send the response with timeout settings to client 
-		printf("SERVER: Valid password from client, sending a good response and waiting for them to accept the list\n");
-		if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: Valid password from client, sending a good response and waiting for them to accept the list\n"); close(logFile);}
+		varPrint(logOutputMode, logFileName, 0, "SERVER: Valid password from client, sending a good response and waiting for them to accept the list\n");
 		noTimeOutMode == 0 ? send(new_s, "VALID-TS", 8, 0) : send(new_s, "VALID-NT", 8, 0);
 		
 		//Receive the client response on whether they want to receive the list (it could be massive depending on directory)
@@ -213,31 +223,27 @@ int main(int argc, char *argv[]) {
 		recv(new_s, buf, 1, 0);
 
 		//Alert the Server to the response from client
-		if(strcmp(buf, "n") == 0) {//Responded 'no'
-			printf("SERVER: The client denied the list. Terminating connection with client.\n");
-			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: The client denied the list. Terminating connection with client.\n"); close(logFile);}
+		if(strcmp(buf, "y") == 0 || strcmp(buf, "Y") == 0) {//Client responded 'yes'
+			varPrint(logOutputMode, logFileName, 0, "SERVER: The client accepted the list, sending the file name list\n");
+		}
+		else if(strcmp(buf, "n") == 0 || strcmp(buf, "N") == 0) {//Client responded 'no'
+			varPrint(logOutputMode, logFileName, 0, "SERVER: The client denied the list. Terminating connection with client.\n");
 			if(recoveryMode == 1) {goto endClientInteraction;}
 			close(new_s);
 			close(s);
 			return 0;
 		}
-		else if(strcmp(buf, "y") == 0) {//Responded 'yes'
-			printf("SERVER: The client accepted the list, sending the file name list\n");
-			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: The client accepted the list, sending the file name list\n"); close(logFile);}
-		}
-		else {//Response was invalid - likely premature termination from client
-			printf("SERVER: The client responded with invalid input. They likely ended the process prematurely. Terminating connection with client.\n");
-			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: The client responded with invalid input. They likely ended the process prematurely. Terminating connection with client.\n"); close(logFile);}
+		else {//Response was invalid - likely premature termination of connection from client
+			varPrint(logOutputMode, logFileName, 1, "SERVER: The client responded with invalid input, likely premature disconnection. Terminating connection with client.\n");
 			if(recoveryMode == 1) {goto endClientInteraction;}
 			close(new_s);
 			close(s);
-			exit(1);
+			return 0;
 		}
 
 		//We can make the assumption that the client responded "y" from here, so we create the list
 		if(createList() != 0) {//createList() returns 1 for errors
-			fprintf(stderr, "SERVER: Couldn't create/open the list. Terminating connection with client.\n");
-			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: Couldn't create/open the list. Terminating connection with client.\n"); close(logFile);}
+			varPrint(logOutputMode, logFileName, 1, "SERVER: Couldn't create/open the list. Terminating connection with client.\n");
 			if(recoveryMode == 1) {goto endClientInteraction;}
 			close(new_s);
 			close(s);
@@ -247,8 +253,7 @@ int main(int argc, char *argv[]) {
 	    //Attempt to open newly create file with list
 	    int listFile = open("DirectoryList", O_RDWR);
 		if(listFile < 0) {//Verify we can open the file that contains our list of files in directory
-			fprintf(stderr, "SERVER: Error opening list file after creating it. Terminating connection with client.\n");
-			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: Error opening list file. Terminating connection with client.\n"); close(logFile);}
+			varPrint(logOutputMode, logFileName, 1, "SERVER: Error opening list file after creating it. Terminating connection with client.\n");
 			send(new_s, "Unable to open file.", 20, 0);//Alert client to error
 			if(recoveryMode == 1) {goto endClientInteraction;}
 			close(new_s);
@@ -270,32 +275,22 @@ int main(int argc, char *argv[]) {
 		//Wait up to 60 seconds or forever if -NT is set for client to send us their filename choice
 		int timeoutVal = 0;
 		int gotRequest = 0;
-		printf("%s", noTimeOutMode == 0 ? "SERVER: Waiting 1 minute for a request response from client.\n" : "SERVER: Waiting for a request response from client.\n");
-		if(logOutputMode == 1) {
-			int logFile = open(logFileName, O_RDWR | O_APPEND);
-			dprintf(logFile, "%s\n", noTimeOutMode == 0 ? "SERVER: Waiting 1 minute for a request response from client.\n" : "SERVER: Waiting for a request response from client.\n");
-			close(logFile);
-		}
+		varPrint(logOutputMode, logFileName, 0, "%s", noTimeOutMode == 0 ? "SERVER: Waiting 1 minute for a request response from client.\n" : "SERVER: Waiting for a request response from client.\n");
 		while(1) {
 			//If we're receiving anything on new_s within the next 10 seconds, recv() it and break out
 			if(isReceiving(new_s, readfds, 10, 0) == 1) {
 				memset(buf, 0, MAX_LINE);
 				recv(new_s, buf, MAX_LINE, 0);
-				debugMode == 0 ? printf("SERVER: We received a request list from the client\n\n") : printf("SERVER: We received a request list of '%s' from client\n\n", buf);
+				if(debugMode == 0) {varPrint(logOutputMode, logFileName, 0, "SERVER: We received a request list from the client\n\n");}
+				else {varPrint(logOutputMode, logFileName, 0, "SERVER: We received a request list of '%s' from client\n\n", buf);}
 				gotRequest = 1;
 				break;
 			}
 
-			//Otherwise, we increment the timeout value and alert the server appropriately
+			//Otherwise, we increment the timeout value and alert the server appropriately (and log it depending out noTimeOutMode setting)
 			timeoutVal++;
-			if(noTimeOutMode == 0) {printf("SERVER: Client hasn't sent a file list yet. %i seconds remaining until client is dropped.\n", ((6-timeoutVal)*10));}
-			if(noTimeOutMode == 1) {printf("SERVER: Client hasn't sent a file list yet. %i seconds have passed.\n", (timeoutVal*10));}
-			if(logOutputMode == 1) {
-				int logFile = open(logFileName, O_RDWR | O_APPEND);
-				if(noTimeOutMode == 0) {dprintf(logFile, "SERVER: Client hasn't sent a file list yet. %i seconds remaining until client is dropped.\n", ((6-timeoutVal)*10));}
-				if(noTimeOutMode == 1) {dprintf(logFile, "SERVER: Client hasn't sent a file list yet. %i seconds have passed.\n", (timeoutVal*10));}
-				close(logFile);
-			}
+			if(noTimeOutMode == 0) {varPrint(logOutputMode, logFileName, 0, "SERVER: Client hasn't sent a file list yet. %i seconds remaining until client is dropped.\n", ((6-timeoutVal)*10));}
+			else {varPrint(logOutputMode, logFileName, 0, "SERVER: Client hasn't sent a file list yet. %i seconds have passed.\n", (timeoutVal*10));}
 
 			//If the user didn't set NT and it's been 60 seconds, break out of loop
 			if(noTimeOutMode == 0 && timeoutVal == 6) {break;}
@@ -303,22 +298,20 @@ int main(int argc, char *argv[]) {
 		
 		//If we timed out of our 'get filename request' loop without getting a file name request
 		if(noTimeOutMode == 0 && gotRequest != 1) {
-			fprintf(stderr, "SERVER: We didn't receive a filename in alloted time. Terminating connection with client.\n");
-			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: We didn't receive a filename in alloted time. Terminating connection with client.\n"); close(logFile);}
+			varPrint(logOutputMode, logFileName, 1, "SERVER: We didn't receive a filename in alloted time. Terminating connection with client.\n");		
 			if(recoveryMode == 1) {goto endClientInteraction;}
 			close(new_s);
 			close(s);
-			exit(1);
+			return 0;
 		}
 
 		//Check to make sure we didn't receive an empty request list
 		if(atoi(buf) == 0) {
-			printf("SERVER: Client didn't select any files in their list. Terminating connection with client.\n");
-			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: Client didn't select any files in their list. Terminating connection with client.\n"); close(logFile);}
+			varPrint(logOutputMode, logFileName, 0, "SERVER: Client didn't select any files in their list. Terminating connection with client.\n");
 			if(recoveryMode == 1) {goto endClientInteraction;}
 			close(new_s);
 			close(s);
-			exit(1);
+			return 0;
 		}
 		
 		//Setup structures to use list we received from client
@@ -327,21 +320,19 @@ int main(int argc, char *argv[]) {
 		char *ptr = strtok(curList, ";;");
 		ptr = strtok(NULL, ";;");
 		
-		//Check each file name in our list and go through the sending process while there are ";;" in curList
+		//Go through the transfer process with each file in the list we just received (Check the name against files in PWD -> Open file -> Send file -> SHA1 Check)
 		while(ptr != NULL) {
 			//Set the curFile equal to the file in the list we're current at as defined by ptr
 			strcpy(curFile, ptr);
 			curFile[strlen(ptr)] = '\0';
-			printf("SERVER: Processing the request for file '%s'\n", curFile);			
-			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: Processing the request for file '%s'\n", curFile); close(logFile);}
+			varPrint(logOutputMode, logFileName, 0, "SERVER: Processing the request for file '%s'\n", curFile);
 
 			//Try to open the requested file
 			int requestedFile = open(curFile, O_RDWR);
 
 			//If we failed to open the requested file, send a bad response "n" to client
 			if(requestedFile < 0) {
-				fprintf(stderr, "SERVER: Error opening requested file. Terminating connection with client.\n");
-				if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: Error opening requested file. Terminating connection with client.\n"); close(logFile);}
+				varPrint(logOutputMode, logFileName, 1, "SERVER: Error opening requested file. Terminating connection with client.\n");
 				send(new_s, "n", 1, 0);//Alert client to error
 				if(recoveryMode == 1) {goto endClientInteraction;}
 				close(new_s);
@@ -349,7 +340,7 @@ int main(int argc, char *argv[]) {
 				exit(1);
 			}
 
-			//Check against all files in folder and see if the requested file matches one of them as a final security check
+			//Check this specific file against all files in folder and see if the requested file matches one of them as a final security check
 			struct dirent* DirEntry;
 			DIR* directory;
 			directory = opendir(".");
@@ -364,8 +355,7 @@ int main(int argc, char *argv[]) {
 
 			//If we didn't find the file requested withing our current directory, alert client and terminate connection
 			if(gotFile != 1) {
-				fprintf(stderr, "SERVER: Error finding requested file '%s'. Terminating connection with client.\n", curFile);
-				if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: Error finding requested file '%s'. Terminating connection with client.\n", curFile); close(logFile);}
+				varPrint(logOutputMode, logFileName, 1, "SERVER: Error finding requested file '%s'. Terminating connection with client.\n", curFile);
 				send(new_s, "n", 1, 0);//Alert client to error
 				if(recoveryMode == 1) {goto endClientInteraction;}
 				close(new_s);
@@ -376,17 +366,12 @@ int main(int argc, char *argv[]) {
 			//We see the requested file is in our PWD and can open it, return a good response "y" to client
 			send(new_s, "y", 1, 0);
 
-			/* From here we need to read() the current file in the list that the client requested into
-			a buffer piece by piece, send() that buffer which contains the file data, update the SHA1 
-			of the file we have as we read() it for later verification, and then verify the SHA1 of 
-			the client's file that they downloaded matches what we have for our original file. */
-
 			//Build structure for the SHA1 and initalize it
     		SHA_CTX ctx;
     		SHA1_Init(&ctx);
 
 			//Send the file data to the client as we read() it into buf
-			if(printFileMode == 1) {printf("SERVER: - Start file -\n\n");}
+			if(printFileMode == 1) {varPrint(logOutputMode, logFileName, 0, "SERVER: - Start file -\n\n");}
 			int bytes = 0;
 			while((size = read(requestedFile, buf, MAX_SIZE)) != 0) {
 				buf[MAX_LINE - 1] = '\0';
@@ -395,10 +380,9 @@ int main(int argc, char *argv[]) {
 				bytes += size;//Increment bytes by size of packet sent each time
 				if(printFileMode == 1) {write(1, buf, size);}//Print contents of buf to stdout each run of read()
 			}
-			if(printFileMode == 1) {printf("\n\nSERVER: - End file -\n");}
-			printf("SERVER: Finished sending file to client. %i total bytes sent.\n", bytes);
-			if(printFileMode == 1) {printf("\n\n");}
-			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: Finished sending file to client. %i total bytes sent.\n", bytes); close(logFile);}
+			if(printFileMode == 1) {varPrint(logOutputMode, logFileName, 0, "\n\nSERVER: - End file -\n");}
+			varPrint(logOutputMode, logFileName, 0, "SERVER: Finished sending file to client. %i total bytes sent.\n", bytes);
+			if(printFileMode == 1) {varPrint(logOutputMode, logFileName, 0, "\n\n");}
 			close(requestedFile);
 
 			//Build structure for the file hash and use SHA1_Final()
@@ -407,12 +391,12 @@ int main(int argc, char *argv[]) {
 
 			//Use sprintf() to put the file hash into a workable string
 			char serverSHA1[SHA_DIGEST_LENGTH*2];
-			for (int pos = 0; pos < SHA_DIGEST_LENGTH; pos++) {
+			for(int pos = 0; pos < SHA_DIGEST_LENGTH; pos++) {
 		        sprintf((char*)&(serverSHA1[pos*2]), "%02x", fileHash[pos]);
 		    }
 
 			//Now we receive the SHA1 the client got to check against it as a check
-			printf("SERVER: Waiting for the client's SHA1 to check against our local SHA1\n");
+			varPrint(logOutputMode, logFileName, 0, "SERVER: Waiting for the client's SHA1 to check against our local SHA1\n");
 			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: Waiting for the client's SHA1 to check against our local SHA1\n"); close(logFile);}
 			while(1) {
 				if(isReceiving(new_s, readfds, 0, 500000) == 1) {//If we're receiving data from client on new_s
@@ -423,13 +407,11 @@ int main(int argc, char *argv[]) {
 					if(strcmp(buf, serverSHA1) == 0) {
 						memset(buf, 0, MAX_LINE);
 						send(new_s, "y", 1, 0);
-						printf("SERVER: The client's SHA1 matched. Sending good response message and moving on...\n\n");
-						if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: The client's SHA1 matched. Sending good response message and moving on...\n\n"); close(logFile);}
+						varPrint(logOutputMode, logFileName, 0, "SERVER: The client's SHA1 matched. Sending good response message and moving on...\n\n");
 						break;
 					}
 					else {
-						fprintf(stderr, "SERVER: The client's SHA1 '%s' didn't match our SHA1 '%s'. Sending error message and terminating connection with client.\n\n", buf, serverSHA1);
-						if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: The client's SHA1 '%s' didn't match our SHA1 '%s'. Sending error message and terminating connection with client.\n\n", buf, serverSHA1); close(logFile);}
+						varPrint(logOutputMode, logFileName, 1, "SERVER: The client's SHA1 '%s' didn't match our SHA1 '%s'. Sending error message and terminating connection with client.\n\n", buf, serverSHA1);
 						send(new_s, "n", 1, 0);
 						if(recoveryMode == 1) {goto endClientInteraction;}
 						close(new_s);
@@ -441,34 +423,34 @@ int main(int argc, char *argv[]) {
 			ptr = strtok(NULL, ";;");//Increment the ptr to go to the next token (filename) in curList
 		}
 	
-		//Ask the user if they wish to continue to receive new clients if we haven't set it to stay up after each run with -SU
-		endClientInteraction: ;//Designated point for server to recover to in recovery mode, allowing server to keep going after certain errors in process
+		//We reached the end of an interaction with a particular client, we now need to act based on the settings the User has selected with their options (IE: SU)
+		endClientInteraction: ;//Designated point for server to go to in recovery mode
+
+		//We need to ask if SU is off, in which case we need to get User to decide how to proceed 
 		if(stayUpMode == 0) {
-			printf("SERVER: We finished with our current client, would you like to stay up for the next client? (yes = y, no = n)\n");
+			varPrint(logOutputMode, logFileName, 0, "SERVER: We finished with our current client, would you like to stay up for the next client? (yes = y, no = n)\n");
 			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: We finished with our current client, would you like to stay up for the next client? (yes = y, no = n)\n"); close(logFile);}
 			while(1) {
 				memset(buf, 0, MAX_LINE);
 				fgets(buf, MAX_LINE, stdin);
-				if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "%s", buf); close(logFile);}
+				varPrint(logOutputMode, logFileName, 0, "%s", buf);
 				buf[1] = '\0';//Correction for new line on fgets
 				if(strcmp(buf, "y") == 0 || strcmp(buf, "Y") == 0) {
-					printf("\nSERVER: Restarting the server and listening for a connection on port '%s' for a new client.\n", SERVER_PORT);
-					if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "\nSERVER: Restarting the server and listening for a connection on port '%s' for a new client.\n", SERVER_PORT); close(logFile);}
+					varPrint(logOutputMode, logFileName, 0, "SERVER: User chose to continue...\n");
 					break;
 				}
 				else if (strcmp(buf, "n") == 0 || strcmp(buf, "N") == 0) {
-					printf("SERVER: User terminated. Ending processes.\n");
-					if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: User terminated. Ending processes.\n"); close(logFile);}
+					varPrint(logOutputMode, logFileName, 0, "SERVER: User terminated. Ending processes.\n");
 					close(new_s);
 					close(s);
 					return 0;
 				}
-				else {fprintf(stderr, "SERVER: Invalid input, please type 'y' for yes, or 'n' for no\n");if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: Invalid input, please type 'y' for yes, or 'n' for no\n"); close(logFile);}}
+				else {varPrint(logOutputMode, logFileName, 1, "SERVER: Invalid input, please type 'y' for yes, or 'n' for no\n");}
 			}
 		}
-		printf("\nSERVER: Restarting the server and listening for a connection on port '%s' for a new client.\n", SERVER_PORT);//Server would've returned by this point, so we alert them to restart
-		if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "\nSERVER: Restarting the server and listening for a connection on port '%s' for a new client.\n", SERVER_PORT); close(logFile);}
 
+		//Server would've returned/exited by this point based on if-statement conditions, so we alert them that we're restarting (going back to start of while-loop)
+		varPrint(logOutputMode, logFileName, 0, "\nSERVER: Restarting the server and listening for a connection on port '%s' for a new client.\n", SERVER_PORT);
 	}
 	close(new_s);
 	close(s);
