@@ -185,7 +185,7 @@ int main(int argc, char *argv[]) {
 	while (1) {
 	    //Try to accept a potential client on new_s
 		if((new_s = accept(s, (struct sockaddr *)&clientAddr, &clientAddrSize)) < 0) {
-			perror("stream-talk-server: accept");
+			fprintf(stderr, "SERVER: Error accepting new client on new_s\n");
 			close(s);
 			exit(1);
 		}
@@ -202,6 +202,13 @@ int main(int argc, char *argv[]) {
 		if(isReceiving(new_s, readfds, 0, 500000) == 1) {
 			memset(buf, 0, MAX_LINE);
 			recv(new_s, buf, MAX_LINE, 0);
+		}
+		else {
+			varPrint(logOutputMode, logFileName, 1, "SERVER: Error receiving the client's password. Possible issue on either end.");
+			if(recoveryMode == 1) {goto endClientInteraction;}
+			close(new_s);
+			close(s);
+			return 1;
 		}
 
 		//Verify the password we got from client
@@ -397,7 +404,6 @@ int main(int argc, char *argv[]) {
 
 			//Now we receive the SHA1 the client got to check against it as a check
 			varPrint(logOutputMode, logFileName, 0, "SERVER: Waiting for the client's SHA1 to check against our local SHA1\n");
-			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: Waiting for the client's SHA1 to check against our local SHA1\n"); close(logFile);}
 			while(1) {
 				if(isReceiving(new_s, readfds, 0, 500000) == 1) {//If we're receiving data from client on new_s
 					memset(buf, 0, MAX_LINE);
@@ -429,7 +435,6 @@ int main(int argc, char *argv[]) {
 		//We need to ask if SU is off, in which case we need to get User to decide how to proceed 
 		if(stayUpMode == 0) {
 			varPrint(logOutputMode, logFileName, 0, "SERVER: We finished with our current client, would you like to stay up for the next client? (yes = y, no = n)\n");
-			if(logOutputMode == 1) {int logFile = open(logFileName, O_RDWR | O_APPEND); dprintf(logFile, "SERVER: We finished with our current client, would you like to stay up for the next client? (yes = y, no = n)\n"); close(logFile);}
 			while(1) {
 				memset(buf, 0, MAX_LINE);
 				fgets(buf, MAX_LINE, stdin);

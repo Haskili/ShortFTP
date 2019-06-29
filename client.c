@@ -69,8 +69,8 @@ int isReceiving(int s, fd_set fds, int seconds, int microseconds) {//Wait a give
 
 	//Reset the timevalues used for select() wait time
 	struct timeval tv;
-	tv.tv_sec = 0;
-	tv.tv_usec = 500000;
+	tv.tv_sec = seconds;
+	tv.tv_usec = microseconds;
 	
 	//Return 1 (true) if we see activity
 	if((select(s+1, &fds, NULL, NULL, &tv)) > 0) {
@@ -245,8 +245,13 @@ int main( int argc, char *argv[] ) {
 		curFile[strlen(ptr)] = '\0';
 
 		//Get the server's response to our request 
-		memset(buf, 0, MAX_LINE);
-		if(isReceiving(s, readfds, 0, 500000) == 1) {recv(s, buf, 1, 0);}
+		if(isReceiving(s, readfds, 3, 500000) == 1) {memset(buf, 0, MAX_LINE);recv(s, buf, 1, 0);}
+		else {//Safety check for no response from server
+			fprintf(stderr, "No response to file request for '%s'. Terminating.\n", curFile);
+			send(s, "INVALID", 7, 0);
+			close(s);
+			exit(1);
+		}
 
 		//If we got an bad or an invalid response from server
 		if(strcmp(buf, "y") != 0) {
@@ -293,7 +298,13 @@ int main( int argc, char *argv[] ) {
 		//Send out SHA1 of the downloaded file and wait for the server's response for verification
 		send(s, clientSHA1, MAX_LINE, 0);
 		memset(buf, 0, MAX_LINE);
-		if(isReceiving(s, readfds, 0, 500000) == 1) {recv(s, buf, 1, 0);}
+		if(isReceiving(s, readfds, 3, 500000) == 1) {recv(s, buf, 1, 0);}
+		else {//Safety check for no response from server
+			fprintf(stderr, "No response to SHA1 verification request for '%s'. Terminating.\n", curFile);
+			send(s, "INVALID", 7, 0);
+			close(s);
+			exit(1);
+		}
 
 		//Check the status message and report it to the client before finally ending process
 		if(strcmp(buf, "y") == 0) {
