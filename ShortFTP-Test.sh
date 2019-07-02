@@ -5,7 +5,21 @@
 #of searching the client output file for a string that only displays upon successful file tranfser and verification. If the variable
 #is empty or isn't what it's supposed to be (see below), it means the process failed. Otherwise, we alert the user of success and exit.
 
-#NOTE: This works on the assumption that the compiled Server and Client files are in the PWD, otherwise it will fail!
+#Check for the compiled server
+findServer=`ls server 2> /dev/null`
+if [ "$findServer" != "server" ];
+	then 
+		echo "The compiled Server was not found in the present working directory, compiling..."
+		gcc server.c -Wall -lcrypto -o server
+fi
+
+#Check for the compiled client
+findClient=`ls client 2> /dev/null`
+if [ "$findClient" != "client" ];
+	then
+		echo "The compiled Client was not found in the present working directory, compiling..."
+		gcc client.c -Wall -lcrypto -o client
+fi
 
 #Build variables
 CEILING=9999
