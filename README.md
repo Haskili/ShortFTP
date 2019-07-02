@@ -37,11 +37,11 @@ Options for the client are:
 
 ## Example usage
 ### Server
-![Server](https://imgur.com/UJsUlxB.png)
+![Server](https://imgur.com/DpNnkoG.png)
 
 
 ### Client
-![Client](https://imgur.com/adCRoE7.png)
+![Client](https://imgur.com/n3pl5hp.png)
 
 
 ## Todo:

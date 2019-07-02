@@ -438,14 +438,13 @@ int main(int argc, char *argv[]) {
 			while(1) {
 				memset(buf, 0, MAX_LINE);
 				fgets(buf, MAX_LINE, stdin);
-				varPrint(logOutputMode, logFileName, 0, "%s", buf);
 				buf[1] = '\0';//Correction for new line on fgets
 				if(strcmp(buf, "y") == 0 || strcmp(buf, "Y") == 0) {
-					varPrint(logOutputMode, logFileName, 0, "SERVER: User chose to continue...\n");
+					varPrint(logOutputMode, logFileName, 0, "SERVER: User chose to continue with '%s'...\n", buf);
 					break;
 				}
 				else if (strcmp(buf, "n") == 0 || strcmp(buf, "N") == 0) {
-					varPrint(logOutputMode, logFileName, 0, "SERVER: User terminated. Ending processes.\n");
+					varPrint(logOutputMode, logFileName, 0, "SERVER: User terminated with '%s'. Ending processes.\n", buf);
 					close(new_s);
 					close(s);
 					return 0;
