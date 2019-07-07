@@ -14,6 +14,7 @@
 #include <stdarg.h>
 
 #define MAX_LINE 256
+#define MAX_LIST_LEN 500
 #define MAX_PENDING 5
 #define MAX_SIZE 150
 
@@ -97,12 +98,8 @@ int bind_and_listen(const char *service) {//Look at a particular port given and 
 
 	//Iterate through the address linked list and try to perform passive open on each one
 	for(rp = result; rp != NULL; rp = rp->ai_next) {
-		if((s = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol)) == -1) {
-			continue;
-		}
-		if(!bind(s, rp->ai_addr, rp->ai_addrlen)) {
-			break;
-		}
+		if((s = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol)) == -1) {continue;}
+		if(!bind(s, rp->ai_addr, rp->ai_addrlen)) {break;}
 		close(s);
 	}
 
@@ -142,6 +139,7 @@ int main(int argc, char *argv[]) {
 	int s, new_s, size;
 	const char * SERVER_PORT = argv[1];
 	const char * SERVER_PASSWORD = argv[2];
+	char fileList[MAX_LIST_LEN * sizeof(char) + 1];
     struct sockaddr_in clientAddr;//Holds our client address
 	socklen_t clientAddrSize = sizeof(struct sockaddr_in);
 	fd_set readfds;//Create a structure to hold file descriptors
@@ -163,6 +161,7 @@ int main(int argc, char *argv[]) {
 			else if(strcmp(argv[i], "-RM") == 0) {recoveryMode = 1;}//Recovers server to continue (resets) after fatal error (IE: Client requesting bad file)
 			else if(strcmp(argv[i], "-PF") == 0) {printFileMode = 1;}//Prints file as we read() it into stdout
 			else if(strcmp(argv[i], "-LO") == 0) {logOutputMode = 1;}//Logs interactions between server/client
+			else if(strcmp(argv[i], "-H") == 0) {printf("SERVER: Usage is as follows - PORT# PASSWORD -[OPTIONS]\n");return 0;}
 			else {//Alert client to invalid option and continue
 				fprintf(stderr, "SERVER: Invalid option '%s'\nSERVER: The valid options are listed in the README.md, continuing with process\n", argv[i]);
 			}
@@ -286,10 +285,11 @@ int main(int argc, char *argv[]) {
 		while(1) {
 			//If we're receiving anything on new_s within the next 10 seconds, recv() it and break out
 			if(isReceiving(new_s, readfds, 10, 0) == 1) {
-				memset(buf, 0, MAX_LINE);
-				recv(new_s, buf, MAX_LINE, 0);
+				//Make a string to hold this new file list
+				memset(fileList, 0, MAX_LIST_LEN);		
+				recv(new_s, fileList, MAX_LIST_LEN, 0);
 				if(debugMode == 0) {varPrint(logOutputMode, logFileName, 0, "SERVER: We received a request list from the client\n\n");}
-				else {varPrint(logOutputMode, logFileName, 0, "SERVER: We received a request list of '%s' from client\n\n", buf);}
+				else {varPrint(logOutputMode, logFileName, 0, "SERVER: We received a request list of '%s' from client\n\n", fileList);}
 				gotRequest = 1;
 				break;
 			}
@@ -313,7 +313,7 @@ int main(int argc, char *argv[]) {
 		}
 
 		//Check to make sure we didn't receive an empty request list
-		if(atoi(buf) == 0) {
+		if(atoi(fileList) == 0) {
 			varPrint(logOutputMode, logFileName, 0, "SERVER: Client didn't select any files in their list. Terminating connection with client.\n");
 			if(recoveryMode == 1) {goto endClientInteraction;}
 			close(new_s);
@@ -322,9 +322,8 @@ int main(int argc, char *argv[]) {
 		}
 		
 		//Setup structures to use list we received from client
-		char curList[MAX_LINE], curFile[MAX_LINE];
-		strcpy(curList, buf);
-		char *ptr = strtok(curList, ";;");
+		char curFile[MAX_LINE];
+		char *ptr = strtok(fileList, ";;");
 		ptr = strtok(NULL, ";;");
 		
 		//Go through the transfer process with each file in the list we just received (Check the name against files in PWD -> Open file -> Send file -> SHA1 Check)
@@ -426,7 +425,7 @@ int main(int argc, char *argv[]) {
 					}
 				}
 			}
-			ptr = strtok(NULL, ";;");//Increment the ptr to go to the next token (filename) in curList
+			ptr = strtok(NULL, ";;");//Increment the ptr to go to the next token (filename) in fileList
 		}
 	
 		//We reached the end of an interaction with a particular client, we now need to act based on the settings the User has selected with their options (IE: SU)
