@@ -1,4 +1,5 @@
 #!/bin/bash
+
 #What this script aims to do is simulate a Server/Client interaction using a random port (within a given range) and a random password.
 #Both the client and server outputs will be "silenced", but they will have their individual outputs logged 
 #in two .out files for verification that the process was successfully completed. For that check, I set a variable equal to the results 

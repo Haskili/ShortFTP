@@ -79,13 +79,13 @@ int isReceiving(int s, fd_set fds, int seconds, int microseconds) {//Wait a give
 int main( int argc, char *argv[] ) {
 	char *host;//IP address of the server we want to connect to
 	char buf[MAX_LINE];//Buffer we will use to send(), recv(), and write()
-	int s, len;
-	host = argv[1];
+	char downloadFileStr[MAX_LINE];//String to hold the name of the file that we will create to write downloaded information into
 	const char * SERVER_PORT = argv[2];
 	char * password = argv[3];
+	int s, len;
+	host = argv[1];
     fd_set readfds;//Create a fileset for file descriptors
     FD_ZERO(&readfds);//Clear the fileset
-	char downloadFileStr[MAX_LINE];//String to hold the name of the file that we will create to write downloaded information into
 
     if(!argv[1] || !argv[2] || !argv[3]) {
        fprintf(stderr, "CLIENT ERROR: Incorrect arguments,\nUSAGE: HOST-ADR, PORT#, PASS, -[OPTIONS]\n");
@@ -93,8 +93,7 @@ int main( int argc, char *argv[] ) {
     }
 
     //Get all the options if user selected any - Might want to put ints inside of if() and instead ask for each mode operation is argc != 3 so it won't give error
-	int debugMode = 0;
-	int printFileMode = 0;
+	int debugMode = 0, printFileMode = 0;
 	if(argc != 3) {
 		for(int i = 4; i < argc; i++) {
 			if(strcmp(argv[i], "-D") == 0) {debugMode = 1;}
@@ -144,20 +143,19 @@ int main( int argc, char *argv[] ) {
 	}
 
 	//Print the list of files received
-	debugMode == 0 ? printf("\n") : printf("CLIENT: - Start list -\n\n");
+	printf("%s", debugMode == 0 ? "\n" : "CLIENT: - Start list -\n\n");
 	while((len = recv(s, buf, MAX_LINE, 0))) {
 		write(1, buf, len);
 		memset(buf, 0, MAX_LINE);
 		if(isReceiving(s, readfds, 0, 500000) == 0) {break;}//If we're not receiving anymore information, break out of the loop and continue
 	}
-	debugMode == 0 ? printf("\n") : printf("\nCLIENT: - End list -\n");
+	printf("%s", debugMode == 0 ? "\n" : "\nCLIENT: - End list -\n");
 
 	//Build a temporary string to hold the list as we get it from the User and other variables needed
 	if(serverTimeout == 1) {printf("CLIENT: The server has given us a minute till the timeout for choosing files.\n");}
 	printf("CLIENT: Please choose up to 10 files from the list above and finish by entering a ';;' or an empty line.\n\n");
 	char *tempList = malloc(45 * sizeof(char));
-	int counter = 0;
-	int fileReqAmount = 0;
+	int counter = 0, fileReqAmount = 0;
 	fd_set waitFDS;
 
 	//Get the file names from the User
@@ -208,8 +206,7 @@ int main( int argc, char *argv[] ) {
 	send(s, fileList, MAX_LIST_LEN, 0);//Send file name list
 
 	//Setup the structures for file names for the next part
-	char *ptr = strtok(fileList, ";;");
-	char curFile[MAX_LINE];
+	char *ptr = strtok(fileList, ";;"), curFile[MAX_LINE];
 	ptr = strtok(NULL, ";;");
 
 	//Go through the file receiving process for each one of the files in list we sent (Receive file verification -> Receive file -> Send file SHA1 -> Receive SHA1 verification)
@@ -239,12 +236,11 @@ int main( int argc, char *argv[] ) {
 		else {printf("CLIENT: Valid response from server to request for file '%s', writing file\n", curFile);}
 		strcpy(downloadFileStr, "DF-");
 		strcat(downloadFileStr, curFile);
-		int downloadFile = open(downloadFileStr, O_CREAT | O_WRONLY | O_TRUNC, 0644);//Open file we're going to write our information into
-		int bytesReceived = 0;
+		int bytesReceived = 0, downloadFile = open(downloadFileStr, O_CREAT | O_WRONLY | O_TRUNC, 0644);//Open file we're going to write our information into
 
 		//Build SHA1 structure and initialize
 		SHA_CTX ctx;
-    	SHA1_Init(&ctx);
+		SHA1_Init(&ctx);
 
 		//Begin to recv() the file from server
 		while((len = recv(s, buf, MAX_LINE, 0))) {

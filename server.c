@@ -136,10 +136,10 @@ int isReceiving(int s, fd_set fds, int seconds, int microseconds) {//Wait a give
 
 int main(int argc, char *argv[]) {
 	char buf[MAX_LINE];//Buffer we will use to send(), recv(), and read()
-	int s, new_s, size;
+	char fileList[MAX_LIST_LEN * sizeof(char) + 1], logFileName[37];
 	const char * SERVER_PORT = argv[1];
 	const char * SERVER_PASSWORD = argv[2];
-	char fileList[MAX_LIST_LEN * sizeof(char) + 1];
+	int s, new_s, size;
     struct sockaddr_in clientAddr;//Holds our client address
 	socklen_t clientAddrSize = sizeof(struct sockaddr_in);
 	fd_set readfds;//Create a structure to hold file descriptors
@@ -151,7 +151,7 @@ int main(int argc, char *argv[]) {
     }
 
 	//Get all the options asked for, if any - Makes sure options can be selected in any order
-	int debugMode = 0; int noPassMode = 0; int noTimeOutMode = 0; int stayUpMode = 0; int recoveryMode = 0; int printFileMode = 0; int logOutputMode = 0;
+	int debugMode = 0, noPassMode = 0, noTimeOutMode = 0, stayUpMode = 0, recoveryMode = 0, printFileMode = 0, logOutputMode = 0;
 	if(argc != 3) {
 		for(int i = 3; i < argc; i++) {
 			if(strcmp(argv[i], "-D") == 0) {debugMode = 1;}//Debug mode for more verbose printing during process
@@ -169,7 +169,6 @@ int main(int argc, char *argv[]) {
 	}
 
 	//Create a log file
-	char logFileName[37];//Holds name of log file, used throughout entire process for accessing log
 	if(logOutputMode == 1) {
 		printf("SERVER: Logfile '%s' %s\n", logFileName, makeLogFile(logFileName) > 0 ? "opened. Writing activity to the file.\n" : "couldn't be opened, continuing.\n");
 	}
@@ -280,7 +279,6 @@ int main(int argc, char *argv[]) {
 
 		//Wait up to 60 seconds or forever if -NT is set for client to send us their filename choice
 		int timeoutVal = 0;
-		int gotRequest = 0;
 		varPrint(logOutputMode, logFileName, 0, "%s", noTimeOutMode == 0 ? "SERVER: Waiting 1 minute for a request response from client.\n" : "SERVER: Waiting for a request response from client.\n");
 		while(1) {
 			//If we're receiving anything on new_s within the next 10 seconds, recv() it and break out
@@ -290,7 +288,6 @@ int main(int argc, char *argv[]) {
 				recv(new_s, fileList, MAX_LIST_LEN, 0);
 				if(debugMode == 0) {varPrint(logOutputMode, logFileName, 0, "SERVER: We received a request list from the client\n\n");}
 				else {varPrint(logOutputMode, logFileName, 0, "SERVER: We received a request list of '%s' from client\n\n", fileList);}
-				gotRequest = 1;
 				break;
 			}
 
@@ -299,17 +296,14 @@ int main(int argc, char *argv[]) {
 			if(noTimeOutMode == 0) {varPrint(logOutputMode, logFileName, 0, "SERVER: Client hasn't sent a file list yet. %i seconds remaining until client is dropped.\n", ((6-timeoutVal)*10));}
 			else {varPrint(logOutputMode, logFileName, 0, "SERVER: Client hasn't sent a file list yet. %i seconds have passed.\n", (timeoutVal*10));}
 
-			//If the user didn't set NT and it's been 60 seconds, break out of loop
-			if(noTimeOutMode == 0 && timeoutVal == 6) {break;}
-		}
-		
-		//If we timed out of our 'get filename request' loop without getting a file name request
-		if(noTimeOutMode == 0 && gotRequest != 1) {
-			varPrint(logOutputMode, logFileName, 1, "SERVER: We didn't receive a filename in alloted time. Terminating connection with client.\n");		
-			if(recoveryMode == 1) {goto endClientInteraction;}
-			close(new_s);
-			close(s);
-			return 0;
+			//If the user didn't set NT and it's been 60 seconds, conditionally leave the loop
+			if(noTimeOutMode == 0 && timeoutVal == 6) {
+				varPrint(logOutputMode, logFileName, 1, "SERVER: We didn't receive a filename in alloted time. Terminating connection with client.\n");		
+				if(recoveryMode == 1) {goto endClientInteraction;}
+				close(new_s);
+				close(s);
+				return 0;
+			}
 		}
 
 		//Check to make sure we didn't receive an empty request list
