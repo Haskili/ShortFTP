@@ -18,6 +18,9 @@
 #define MAX_PENDING 5
 #define MAX_SIZE 150
 
+#ifndef _SERVER_H_
+#define _SERVER_H_
+
 int createList() {//Creates a file to store list of files in directory server is started
 	struct dirent *DirEntry;
 	DIR *directory;
@@ -48,34 +51,34 @@ int makeLogFile(char *logFileName) {//Create a unique file to log events with a 
 	time_t timeNow = time(NULL);
 	sprintf(logFileName + 13, "%s", ctime(&timeNow));
 	logFileName[37] = '\0';
-    int logFile = open(logFileName, O_CREAT | O_RDWR | O_APPEND, 0644);//Open the file
-    dprintf(logFile, "------------------------\n%s------------------------\n\n", ctime(&timeNow));//Attach header to the top of the log file
-    close(logFile);
-    return logFile;
+	int logFile = open(logFileName, O_CREAT | O_RDWR | O_APPEND, 0644);//Open the file
+	dprintf(logFile, "------------------------\n%s------------------------\n\n", ctime(&timeNow));//Attach header to the top of the log file
+	close(logFile);
+	return logFile;
 }
 
 int varPrint(int logOutputMode, char *logFileName, int isError, const char *format, ...) {//Uses vfprintf() to take care of writing conditionally to stdout, stderr, and a log file
-  va_list args;
-  va_start(args, format);
+	va_list args;
+	va_start(args, format);
 
-  //First we print the message to the appropriate output given arguements
-  int len = vfprintf((isError == 0 ? stdout : stderr), format, args);
+	//First we print the message to the appropriate output given arguements
+	int len = vfprintf((isError == 0 ? stdout : stderr), format, args);
 
-  //Then take care of logging it to file if we need to
-  if(logOutputMode == 1) {
-    FILE *logFile = fopen(logFileName, "a");//Opens the file based on name
-    if(logFile == NULL) {
-    	fclose(logFile);
-    	va_end(args);
-    	fprintf(stderr, "SERVER: Error, couldn't write event to log file. Continuing...");
-    	return -1;
-    }
-    va_start(args, format);
-    vfprintf(logFile, format, args);
-    fclose(logFile);
-  }
-  va_end(args);
-  return len;//Returns the amount of characters printed (including null-terminator), similar to printf() which it emulates
+	//Then take care of logging it to file if we need to
+	if(logOutputMode == 1) {
+		FILE *logFile = fopen(logFileName, "a");//Opens the file based on name
+		if(logFile == NULL) {
+			fclose(logFile);
+			va_end(args);
+			fprintf(stderr, "SERVER: Error, couldn't write event to log file. Continuing...");
+			return -1;
+		}
+		va_start(args, format);
+		vfprintf(logFile, format, args);
+		fclose(logFile);
+	}
+	va_end(args);
+	return len;//Returns the amount of characters printed (including null-terminator), similar to printf() which it emulates
 }
 
 int bind_and_listen(const char *service) {//Look at a particular port given and listen on that port for a client
@@ -131,3 +134,4 @@ int isReceiving(int s, fd_set fds, int seconds, int microseconds) {//Wait a give
 	if((select(s+1, &fds, NULL, NULL, &tv)) > 0) {return 1;}
 	return 0;//Otherwise, we return 0 (false)
 }
+#endif

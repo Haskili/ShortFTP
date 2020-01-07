@@ -6,15 +6,15 @@ int main(int argc, char *argv[]) {
 	const char * SERVER_PORT = argv[1];
 	const char * SERVER_PASSWORD = argv[2];
 	int s, new_s, size;
-    struct sockaddr_in clientAddr;//Holds our client address
+	struct sockaddr_in clientAddr;//Holds our client address
 	socklen_t clientAddrSize = sizeof(struct sockaddr_in);
 	fd_set readfds;//Create a structure to hold file descriptors
-    FD_ZERO(&readfds);//Reset the file set
+	FD_ZERO(&readfds);//Reset the file set
 
-    if(!argv[1] || !argv[2]) {//Check that port and password are given by user
-    	fprintf(stderr, "SERVER: Incorrect arguments,\nUSAGE: PORT#, PASSWORD, -[OPTIONS]\n");
-    	exit(1);
-    }
+	if(!argv[1] || !argv[2]) {//Check that port and password are given by user
+		fprintf(stderr, "SERVER: Incorrect arguments,\nUSAGE: PORT#, PASSWORD, -[OPTIONS]\n");
+		exit(1);
+	}
 
 	//Get all the options asked for, if any - Makes sure options can be selected in any order
 	int debugMode = 0, noPassMode = 0, noTimeOutMode = 0, stayUpMode = 0, recoveryMode = 0, printFileMode = 0, logOutputMode = 0;
@@ -40,27 +40,25 @@ int main(int argc, char *argv[]) {
 	}
 
 	//Bind socket to local interface and passive open
-	if((s = bind_and_listen(SERVER_PORT)) < 0) {
-		exit(1);
-	}
+	if((s = bind_and_listen(SERVER_PORT)) < 0) {exit(1);}
 	if(varPrint(logOutputMode, logFileName, 0, "SERVER: Starting server on port '%s'.\n", SERVER_PORT) == -1) {fprintf(stderr, "SERVER: Error with log file. Please check output.\n");}
 
 	//Go into the main loop that waits for a potential client, this loop will allow us to receive multiple clients consecutively
 	while (1) {
-	    //Try to accept a potential client on new_s
+		//Try to accept a potential client on new_s
 		if((new_s = accept(s, (struct sockaddr *)&clientAddr, &clientAddrSize)) < 0) {
 			fprintf(stderr, "SERVER: Error accepting new client on new_s\n");
 			close(s);
 			exit(1);
 		}
 
-	    //Print appropriate message for finding a potential client
-	    getpeername(new_s, (struct sockaddr *)&clientAddr, &clientAddrSize);//Get the adress of the client trying to connect to server
-	    if(debugMode == 1) {
-	    	time_t timeNow = time(NULL);
-	    	varPrint(logOutputMode, logFileName, 0, "SERVER: We found a potential client with address of '%s' - %s", inet_ntoa(clientAddr.sin_addr), ctime(&timeNow));
-	    } 
-	    else {varPrint(logOutputMode, logFileName, 0, "SERVER: We found a potential client with address of '%s'\n", inet_ntoa(clientAddr.sin_addr));}
+		//Print appropriate message for finding a potential client
+		getpeername(new_s, (struct sockaddr *)&clientAddr, &clientAddrSize);//Get the adress of the client trying to connect to server
+		if(debugMode == 1) {
+			time_t timeNow = time(NULL);
+			varPrint(logOutputMode, logFileName, 0, "SERVER: We found a potential client with address of '%s' - %s", inet_ntoa(clientAddr.sin_addr), ctime(&timeNow));
+		}
+		else {varPrint(logOutputMode, logFileName, 0, "SERVER: We found a potential client with address of '%s'\n", inet_ntoa(clientAddr.sin_addr));}
 
 		//Grab the password from the client
 		if(isReceiving(new_s, readfds, 0, 500000) == 1) {
@@ -90,22 +88,16 @@ int main(int argc, char *argv[]) {
 		noTimeOutMode == 0 ? send(new_s, "VALID-TS", 8, 0) : send(new_s, "VALID-NT", 8, 0);
 		
 		//Receive the client response on whether they want to receive the list (it could be massive depending on directory)
-        memset(buf, 0, MAX_LINE);
+		memset(buf, 0, MAX_LINE);
 		recv(new_s, buf, 1, 0);
 
 		//Alert the Server to the response from client
 		if(strcmp(buf, "y") == 0 || strcmp(buf, "Y") == 0) {//Client responded 'yes'
 			varPrint(logOutputMode, logFileName, 0, "SERVER: The client accepted the list, sending the file name list\n");
 		}
-		else if(strcmp(buf, "n") == 0 || strcmp(buf, "N") == 0) {//Client responded 'no'
-			varPrint(logOutputMode, logFileName, 0, "SERVER: The client denied the list. Terminating connection with client.\n");
-			if(recoveryMode == 1) {goto endClientInteraction;}
-			close(new_s);
-			close(s);
-			return 0;
-		}
-		else {//Response was invalid - likely premature termination of connection from client
-			varPrint(logOutputMode, logFileName, 1, "SERVER: The client responded with invalid input, likely premature disconnection. Terminating connection with client.\n");
+		else {
+			if(strcmp(buf, "n") == 0 || strcmp(buf, "N") == 0) {varPrint(logOutputMode, logFileName, 0, "SERVER: The client denied the list. Terminating connection with client.\n");}
+			else{varPrint(logOutputMode, logFileName, 1, "SERVER: The client responded with invalid input, likely premature disconnection. Terminating connection with client.\n");}
 			if(recoveryMode == 1) {goto endClientInteraction;}
 			close(new_s);
 			close(s);
@@ -119,10 +111,10 @@ int main(int argc, char *argv[]) {
 			close(new_s);
 			close(s);
 			exit(1);
-	    }
+		}
 
-	    //Attempt to open newly create file with list
-	    int listFile = open("DirectoryList", O_RDWR);
+		//Attempt to open newly create file with list
+		int listFile = open("DirectoryList", O_RDWR);
 		if(listFile < 0) {//Verify we can open the file that contains our list of files in directory
 			varPrint(logOutputMode, logFileName, 1, "SERVER: Error opening list file after creating it. Terminating connection with client.\n");
 			send(new_s, "Unable to open file.", 20, 0);//Alert client to error
@@ -206,13 +198,13 @@ int main(int argc, char *argv[]) {
 				exit(1);
 			}
 
-			//Check this specific file against all files in folder and see if the requested file matches one of them as a final security check
+			//Check this specific file against all files in folder to make sure the requested file matches one of them
 			struct dirent* DirEntry;
 			DIR* directory;
 			directory = opendir(".");
 			int gotFile = 0;
 			while((DirEntry = readdir(directory))) {
-				if(strcmp(DirEntry->d_name, curFile) == 0) {//If the name of the pointer to our current file in directory is file requested
+				if(strcmp(DirEntry->d_name, curFile) == 0) {
 					gotFile = 1;
 					break;
 				}

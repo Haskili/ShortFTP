@@ -12,20 +12,18 @@
 #define MAX_SIZE 150
 #define MAX_LIST_LEN 500
 
+#ifndef _CLIENT_H_
+#define _CLIENT_H_
+
 int verifyPassword(int s, const char * password, char * buf) {//Used to send() a given password through a given sockfd and recv() the response
 	send(s, password, MAX_LINE, 0);//Send the password to server
 
-    //Setup for receiving the response from server
-    memset(buf, 0, MAX_LINE);
-    recv(s, buf, MAX_LINE, 0);
+	//Get response from server
+	memset(buf, 0, MAX_LINE);
+	recv(s, buf, MAX_LINE, 0);
 
-    //Ask if the server verified our password and what timeout is set to
-    if(strcmp(buf, "VALID-NT") == 0 || strcmp(buf, "VALID-TS") == 0) {
-    	return 0;
-    }
-
-    //Server didn't validate client's password, return bad value
-	return 1;
+	//Return based on verification message received
+	return (strcmp(buf, "VALID-NT") == 0 || strcmp(buf, "VALID-TS") == 0) ? 0 : 1;
 }
 
 int lookup_and_connect(const char *host, const char *service) {
@@ -73,3 +71,4 @@ int isReceiving(int s, fd_set fds, int seconds, int microseconds) {//Wait a give
 	if((select(s+1, &fds, NULL, NULL, &tv)) > 0) {return 1;}
 	return 0;//Otherwise, we return 0 (false)
 }
+#endif

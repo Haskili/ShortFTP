@@ -8,15 +8,15 @@ int main( int argc, char *argv[] ) {
 	char * password = argv[3];
 	int s, len;
 	host = argv[1];
-    fd_set readfds;//Create a fileset for file descriptors
-    FD_ZERO(&readfds);//Clear the fileset
+	fd_set readfds;//Create a fileset for file descriptors
+	FD_ZERO(&readfds);//Clear the fileset
 
-    if(!argv[1] || !argv[2] || !argv[3]) {
-       fprintf(stderr, "CLIENT ERROR: Incorrect arguments,\nUSAGE: HOST-ADR, PORT#, PASS, -[OPTIONS]\n");
-       exit(1);
-    }
+	if(!argv[1] || !argv[2] || !argv[3]) {
+		fprintf(stderr, "CLIENT ERROR: Incorrect arguments,\nUSAGE: HOST-ADR, PORT#, PASS, -[OPTIONS]\n");
+		exit(1);
+	}
 
-    //Get all the options if user selected any - Might want to put ints inside of if() and instead ask for each mode operation is argc != 3 so it won't give error
+	//Get all the options if user selected any - Might want to put ints inside of if() and instead ask for each mode operation is argc != 3 so it won't give error
 	int debugMode = 0, printFileMode = 0;
 	if(argc != 3) {
 		for(int i = 4; i < argc; i++) {
@@ -34,18 +34,18 @@ int main( int argc, char *argv[] ) {
 	FD_SET(s, &readfds);//Add s to list of sockets
 
 	//Receive a verification from server that we gave a valid password
-    if(verifyPassword(s, password, buf) == 1) {
-    	//Server didn't give good response to password we sent, alert client and exit
-    	fprintf(stderr, "CLIENT: Error verifying password with server, terminating.\n");
-    	close(s);
-    	exit(1);
-    }
+	if(verifyPassword(s, password, buf) == 1) {
+		//Server didn't give good response to password we sent, alert client and exit
+		fprintf(stderr, "CLIENT: Error verifying password with server, terminating.\n");
+		close(s);
+		exit(1);
+	}
 
-    //Check buff to see what timeout settings server sent along with our password validation and set ours accordingly
-    int serverTimeout = 1;
-    if(strcmp(buf, "VALID-NT") == 0) {serverTimeout = 0;}
+	//Check buff to see what timeout settings server sent along with our password validation and set ours accordingly
+	int serverTimeout = 1;
+	if(strcmp(buf, "VALID-NT") == 0) {serverTimeout = 0;}
 
-    //Return response to server on whether user wants to receive the list of files available
+	//Return response to server on whether user wants to receive the list of files available
 	printf("CLIENT: List available from host with address '%s'\nCLIENT: Are you certain you want to download the list from this host? (yes = y, no = n)\n", argv[1]);
 	while(1) {
 		memset(buf, 0, MAX_LINE);
@@ -103,7 +103,7 @@ int main( int argc, char *argv[] ) {
 			else {fprintf(stderr, "CLIENT: Adding that item to the list would exceede the maximum file list length, breaking out and sending list\n");break;}
 		}
 
-		//Increment counter for the seconds in the input loop and check if we need to exit()
+		//Increment counter for the seconds in the input loop and check if we need to leave loop
 		counter++;
 		if(counter == 60 && serverTimeout == 1) {//This denotes the amount of seconds until we leave the loop if applicable
 			fprintf(stderr, "CLIENT: We were timed out by the server. Terminating.\n");
@@ -133,7 +133,7 @@ int main( int argc, char *argv[] ) {
 	char *ptr = strtok(fileList, ";;"), curFile[MAX_LINE];
 	ptr = strtok(NULL, ";;");
 
-	//Go through the file receiving process for each one of the files in list we sent (Receive file verification -> Receive file -> Send file SHA1 -> Receive SHA1 verification)
+	//Go through the file receiving process for each one of the files in list (Receive file verification -> Receive file -> Send file SHA1 -> Receive SHA1 verification)
 	for(int i = 0; i < fileReqAmount; i++) {
 		//Grab the current file that we should be receiving from the fileList
 		strcpy(curFile, ptr);
@@ -185,9 +185,7 @@ int main( int argc, char *argv[] ) {
 
 		//We need to make hash into a workable string
 		char clientSHA1[SHA_DIGEST_LENGTH*2];
-		for (int pos = 0; pos < SHA_DIGEST_LENGTH; pos++) {
-	        sprintf((char*)&(clientSHA1[pos*2]), "%02x", fileHash[pos]);
-	    }
+		for (int pos = 0; pos < SHA_DIGEST_LENGTH; sprintf((char*)&(clientSHA1[pos*2]), "%02x", fileHash[pos]), pos++);
 
 		//Send out SHA1 of the downloaded file and wait for the server's response for verification
 		send(s, clientSHA1, MAX_LINE, 0);
@@ -201,9 +199,7 @@ int main( int argc, char *argv[] ) {
 		}
 
 		//Check the status message and report it to the client before finally ending process
-		if(strcmp(buf, "y") == 0) {
-	    	printf("CLIENT: Good response from server for SHA1 verification, confirmed that our file is valid. Moving on...\n\n");
-	    }
+		if(strcmp(buf, "y") == 0) {printf("CLIENT: Good response from server for SHA1 verification, confirmed that our file is valid. Moving on...\n\n");}
 	    else if(strcmp(buf, "n") == 0) {
 	    	fprintf(stderr, "\nCLIENT: Bad response from server to our SHA1 of file '%s'. Terminating.\n", curFile);
 	    	close(s);
@@ -218,5 +214,5 @@ int main( int argc, char *argv[] ) {
 	}
 	printf("CLIENT: Final file transfered, ending processes.\n");
 	close(s);
-    return 0;
+	return 0;
 }
