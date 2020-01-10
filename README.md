@@ -1,7 +1,7 @@
 # ShortFTP
 
 ## Overview
-ShortFTP is a basic FTP server/client that allows the client to look through a given list of files in the directory server is executed in, choose files from that list, download them, and verify the validity of those downloaded files. It is made mainly for learning purposes.
+ShortFTP is a basic file transfer Server/Client that allows the Client to look through a given list of files in the directory Server is executed in, choose files from that list, download them, and verify those downloaded files with a hash. It is made mainly for learning purposes.
 
 
 I started this project outside of school while in my first networking class last semester (Spring 2019) when I was introduced to C. I designed ShortFTP based off a project that was assigned in class which allowed for bare-bones file transfering between two hosts. Once I was done with that project I started this one on my own, eager to see what I could do if I explored the concept a little bit further.
@@ -38,14 +38,15 @@ Options for the client are:
 
 ## Example usage
 ### Server
-![Server](https://imgur.com/DpNnkoG.png)
+![Server](https://imgur.com/LIDDYlo.png)
 
 
 ### Client
-![Client](https://imgur.com/n3pl5hp.png)
+![Client](https://imgur.com/vpoIX2T.png)
 
 
 ## Todo:
 -   [x] Create more automated tests to cover edge cases
 -   [ ] Additional security features for Server
--   [ ] Abiltiy for server to handle multiple clients simultaneously
+-   [ ] Rewrite certain functions for more general use
+-   [ ] Ability for server to handle multiple clients simultaneously
